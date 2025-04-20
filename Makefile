@@ -13,7 +13,7 @@ $(OUT_DIR):
 
 # Build the application
 build: $(OUT_DIR)
-	go build -o $(OUT_DIR)/$(BINARY_NAME) .
+	go build -o $(OUT_DIR)/$(BINARY_NAME) ./cmd/dotman
 
 # Run the application
 run: build
