@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/spf13/cobra"
 )
 
@@ -70,10 +74,52 @@ configuration files and directory structure.`,
 			os.Exit(1)
 		}
 
+		repo, err := git.PlainInitWithOptions(dir, &git.PlainInitOptions{
+			Bare: false,
+			InitOptions: git.InitOptions{
+				DefaultBranch: "refs/heads/main",
+			},
+		})
+
+		if err != nil {
+			fmt.Printf("Error initializing git repository: %v\n", err)
+			os.Exit(1)
+		}
+
+		if verbose {
+			fmt.Printf("Git repository initialized successfully: %s\n", dir)
+		}
+
 		// Create .manfile
 		manfile := filepath.Join(dir, ".manfile")
 		if err := os.WriteFile(manfile, []byte("{}"), 0644); err != nil {
 			fmt.Printf("Error creating .manfile: %v\n", err)
+			os.Exit(1)
+		}
+
+		wt, err := repo.Worktree()
+		if err != nil {
+			fmt.Printf("Error getting worktree: %v\n", err)
+			os.Exit(1)
+		}
+
+		wt.Add(".manfile")
+
+		// Get author info from git config
+		cfg, err := repo.ConfigScoped(config.GlobalScope)
+		if err != nil {
+			fmt.Printf("Error getting git config: %v\n", err)
+			os.Exit(1)
+		}
+
+		if _, err := wt.Commit("Initial commit", &git.CommitOptions{
+			Author: &object.Signature{
+				Name:  cfg.User.Name,
+				Email: cfg.User.Email,
+				When:  time.Now(),
+			},
+		}); err != nil {
+			fmt.Printf("Error committing .manfile: %v\n", err)
 			os.Exit(1)
 		}
 
