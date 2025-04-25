@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/config"
+	gitconfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	dotmanconfig "github.com/noosxe/dotman/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -74,6 +75,13 @@ configuration files and directory structure.`,
 			os.Exit(1)
 		}
 
+		// Create .manfile
+		manfile := filepath.Join(dir, ".manfile")
+		if err := os.WriteFile(manfile, []byte("{}"), 0644); err != nil {
+			fmt.Printf("Error creating .manfile: %v\n", err)
+			os.Exit(1)
+		}
+
 		repo, err := git.PlainInitWithOptions(dir, &git.PlainInitOptions{
 			Bare: false,
 			InitOptions: git.InitOptions{
@@ -90,13 +98,6 @@ configuration files and directory structure.`,
 			fmt.Printf("Git repository initialized successfully: %s\n", dir)
 		}
 
-		// Create .manfile
-		manfile := filepath.Join(dir, ".manfile")
-		if err := os.WriteFile(manfile, []byte("{}"), 0644); err != nil {
-			fmt.Printf("Error creating .manfile: %v\n", err)
-			os.Exit(1)
-		}
-
 		wt, err := repo.Worktree()
 		if err != nil {
 			fmt.Printf("Error getting worktree: %v\n", err)
@@ -106,7 +107,7 @@ configuration files and directory structure.`,
 		wt.Add(".manfile")
 
 		// Get author info from git config
-		cfg, err := repo.ConfigScoped(config.GlobalScope)
+		gitCfg, err := repo.ConfigScoped(gitconfig.GlobalScope)
 		if err != nil {
 			fmt.Printf("Error getting git config: %v\n", err)
 			os.Exit(1)
@@ -114,12 +115,25 @@ configuration files and directory structure.`,
 
 		if _, err := wt.Commit("Initial commit", &git.CommitOptions{
 			Author: &object.Signature{
-				Name:  cfg.User.Name,
-				Email: cfg.User.Email,
+				Name:  gitCfg.User.Name,
+				Email: gitCfg.User.Email,
 				When:  time.Now(),
 			},
 		}); err != nil {
 			fmt.Printf("Error committing .manfile: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Save dotman directory to config
+		cfg, err := dotmanconfig.LoadConfig(configPath, fsys)
+		if err != nil {
+			fmt.Printf("Error loading config: %v\n", err)
+			os.Exit(1)
+		}
+
+		cfg.DotmanDir = dir
+		if err := dotmanconfig.SaveConfig(configPath, cfg, fsys); err != nil {
+			fmt.Printf("Error saving config: %v\n", err)
 			os.Exit(1)
 		}
 
