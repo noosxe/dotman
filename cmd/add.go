@@ -1,11 +1,11 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/noosxe/dotman/internal/config"
 	dotmanfs "github.com/noosxe/dotman/internal/fs"
@@ -15,11 +15,10 @@ import (
 
 // addOperation represents the state of an add operation
 type addOperation struct {
-	path           string
-	config         *config.Config
-	journalManager *journal.JournalManager
-	fsys           dotmanfs.FileSystem
-	entry          *journal.JournalEntry
+	path   string
+	config *config.Config
+	fsys   dotmanfs.FileSystem
+	ctx    context.Context
 }
 
 var addCmd = &cobra.Command{
@@ -68,52 +67,50 @@ func (op *addOperation) initialize() error {
 	op.config = cfg
 
 	// Initialize journal manager
-	op.journalManager = journal.NewJournalManager(op.fsys, filepath.Join(cfg.DotmanDir, "journal"))
-	if err := op.journalManager.Initialize(); err != nil {
+	jm := journal.NewJournalManager(op.fsys, filepath.Join(cfg.DotmanDir, "journal"))
+	if err := jm.Initialize(); err != nil {
 		return fmt.Errorf("error initializing journal: %v", err)
 	}
 
 	// Create journal entry
-	entry, err := op.journalManager.CreateEntry("add", op.path, filepath.Join(cfg.DotmanDir, filepath.Base(op.path)))
+	entry, err := jm.CreateEntry(journal.OperationTypeAdd, op.path, filepath.Join(cfg.DotmanDir, filepath.Base(op.path)))
 	if err != nil {
 		return fmt.Errorf("error creating journal entry: %v", err)
 	}
-	op.entry = entry
+
+	// Add journal manager and entry to context
+	op.ctx = journal.WithJournalManager(context.Background(), jm)
+	op.ctx = journal.WithJournalEntry(op.ctx, entry)
 
 	return nil
 }
 
 func (op *addOperation) verifySource() error {
-	// Check if path exists
+	// Create verification step
+	step, err := journal.AddStepToCurrentEntry(op.ctx, journal.StepTypeVerify, "Verify source path exists", op.path, "")
+	if err != nil {
+		return err
+	}
+
+	// Start verification step
+	if err := journal.StartStep(op.ctx, step); err != nil {
+		return err
+	}
+
+	// Perform verification
 	info, err := op.fsys.Stat(op.path)
 	if err != nil {
-		op.entry.Steps = append(op.entry.Steps, journal.Step{
-			Type:        "verify",
-			Status:      "failed",
-			Error:       err.Error(),
-			Description: "Verify source path exists",
-			Source:      op.path,
-			StartTime:   time.Now(),
-			EndTime:     time.Now(),
-		})
-		op.journalManager.UpdateEntry(op.entry)
-		op.journalManager.MoveEntry(op.entry, "failed")
+		// Fail the entire entry
+		if err := journal.FailEntry(op.ctx, err); err != nil {
+			return err
+		}
 		return fmt.Errorf("source path does not exist: %v", err)
 	}
 
-	// Add verification step
-	verifyStart := time.Now()
-	op.entry.Steps = append(op.entry.Steps, journal.Step{
-		Type:        "verify",
-		Status:      "completed",
-		Description: "Verify source path exists",
-		Source:      op.path,
-		Details:     fmt.Sprintf("Path exists and is a %s", map[bool]string{true: "directory", false: "file"}[info.IsDir()]),
-		StartTime:   verifyStart,
-		EndTime:     time.Now(),
-	})
-	if err := op.journalManager.UpdateEntry(op.entry); err != nil {
-		return fmt.Errorf("error updating journal: %v", err)
+	// Complete verification step
+	details := fmt.Sprintf("Path exists and is a %s", map[bool]string{true: "directory", false: "file"}[info.IsDir()])
+	if err := journal.CompleteStep(op.ctx, step, details); err != nil {
+		return err
 	}
 
 	return nil
@@ -131,144 +128,110 @@ func (op *addOperation) copyAndVerify() error {
 
 func (op *addOperation) copyAndVerifyDirectory(targetPath string) error {
 	// Add directory copy step
-	copyStart := time.Now()
-	op.entry.Steps = append(op.entry.Steps, journal.Step{
-		Type:        "copy",
-		Status:      "in-progress",
-		Description: "Copy directory contents",
-		Source:      op.path,
-		Target:      targetPath,
-		StartTime:   copyStart,
-	})
-	if err := op.journalManager.UpdateEntry(op.entry); err != nil {
-		return fmt.Errorf("error updating journal: %v", err)
+	step, err := journal.AddStepToCurrentEntry(op.ctx, journal.StepTypeCopy, "Copy directory contents", op.path, targetPath)
+	if err != nil {
+		return err
+	}
+
+	// Start copy step
+	if err := journal.StartStep(op.ctx, step); err != nil {
+		return err
 	}
 
 	// Copy directory
 	if err := copyDir(op.path, targetPath, op.fsys); err != nil {
-		op.entry.Steps[len(op.entry.Steps)-1].Status = "failed"
-		op.entry.Steps[len(op.entry.Steps)-1].Error = err.Error()
-		op.entry.Steps[len(op.entry.Steps)-1].EndTime = time.Now()
-		op.journalManager.UpdateEntry(op.entry)
-		op.journalManager.MoveEntry(op.entry, "failed")
+		if err := journal.FailEntry(op.ctx, err); err != nil {
+			return err
+		}
 		return fmt.Errorf("error copying directory: %v", err)
 	}
 
-	// Update copy step
-	op.entry.Steps[len(op.entry.Steps)-1].Status = "completed"
-	op.entry.Steps[len(op.entry.Steps)-1].Details = "Successfully copied all directory contents"
-	op.entry.Steps[len(op.entry.Steps)-1].EndTime = time.Now()
-	if err := op.journalManager.UpdateEntry(op.entry); err != nil {
-		return fmt.Errorf("error updating journal: %v", err)
+	// Complete copy step
+	if err := journal.CompleteStep(op.ctx, step, "Successfully copied all directory contents"); err != nil {
+		return err
 	}
 
 	// Add verification step
-	verifyStart := time.Now()
-	op.entry.Steps = append(op.entry.Steps, journal.Step{
-		Type:        "verify",
-		Status:      "in-progress",
-		Description: "Verify directory copy",
-		Source:      op.path,
-		Target:      targetPath,
-		StartTime:   verifyStart,
-	})
-	if err := op.journalManager.UpdateEntry(op.entry); err != nil {
-		return fmt.Errorf("error updating journal: %v", err)
+	verifyStep, err := journal.AddStepToCurrentEntry(op.ctx, journal.StepTypeVerify, "Verify directory copy", op.path, targetPath)
+	if err != nil {
+		return err
+	}
+
+	// Start verification step
+	if err := journal.StartStep(op.ctx, verifyStep); err != nil {
+		return err
 	}
 
 	// Verify directory copy
 	if err := verifyDirCopy(op.path, targetPath, op.fsys); err != nil {
-		op.entry.Steps[len(op.entry.Steps)-1].Status = "failed"
-		op.entry.Steps[len(op.entry.Steps)-1].Error = err.Error()
-		op.entry.Steps[len(op.entry.Steps)-1].EndTime = time.Now()
-		op.journalManager.UpdateEntry(op.entry)
-		op.journalManager.MoveEntry(op.entry, "failed")
+		if err := journal.FailEntry(op.ctx, err); err != nil {
+			return err
+		}
 		return fmt.Errorf("error verifying directory copy: %v", err)
 	}
 
-	// Update verification step
-	op.entry.Steps[len(op.entry.Steps)-1].Status = "completed"
-	op.entry.Steps[len(op.entry.Steps)-1].Details = "Successfully verified all directory contents match"
-	op.entry.Steps[len(op.entry.Steps)-1].EndTime = time.Now()
+	// Complete verification step
+	if err := journal.CompleteStep(op.ctx, verifyStep, "Successfully verified all directory contents match"); err != nil {
+		return err
+	}
 
 	return nil
 }
 
 func (op *addOperation) copyAndVerifyFile(targetPath string) error {
 	// Add file copy step
-	copyStart := time.Now()
-	op.entry.Steps = append(op.entry.Steps, journal.Step{
-		Type:        "copy",
-		Status:      "in-progress",
-		Description: "Copy file contents",
-		Source:      op.path,
-		Target:      targetPath,
-		StartTime:   copyStart,
-	})
-	if err := op.journalManager.UpdateEntry(op.entry); err != nil {
-		return fmt.Errorf("error updating journal: %v", err)
+	step, err := journal.AddStepToCurrentEntry(op.ctx, journal.StepTypeCopy, "Copy file contents", op.path, targetPath)
+	if err != nil {
+		return err
+	}
+
+	// Start copy step
+	if err := journal.StartStep(op.ctx, step); err != nil {
+		return err
 	}
 
 	// Copy file
 	if err := copyFile(op.path, targetPath, op.fsys); err != nil {
-		op.entry.Steps[len(op.entry.Steps)-1].Status = "failed"
-		op.entry.Steps[len(op.entry.Steps)-1].Error = err.Error()
-		op.entry.Steps[len(op.entry.Steps)-1].EndTime = time.Now()
-		op.journalManager.UpdateEntry(op.entry)
-		op.journalManager.MoveEntry(op.entry, "failed")
+		if err := journal.FailEntry(op.ctx, err); err != nil {
+			return err
+		}
 		return fmt.Errorf("error copying file: %v", err)
 	}
 
-	// Update copy step
-	op.entry.Steps[len(op.entry.Steps)-1].Status = "completed"
-	op.entry.Steps[len(op.entry.Steps)-1].Details = "Successfully copied file contents"
-	op.entry.Steps[len(op.entry.Steps)-1].EndTime = time.Now()
-	if err := op.journalManager.UpdateEntry(op.entry); err != nil {
-		return fmt.Errorf("error updating journal: %v", err)
+	// Complete copy step
+	if err := journal.CompleteStep(op.ctx, step, "Successfully copied file contents"); err != nil {
+		return err
 	}
 
 	// Add verification step
-	verifyStart := time.Now()
-	op.entry.Steps = append(op.entry.Steps, journal.Step{
-		Type:        "verify",
-		Status:      "in-progress",
-		Description: "Verify file copy",
-		Source:      op.path,
-		Target:      targetPath,
-		StartTime:   verifyStart,
-	})
-	if err := op.journalManager.UpdateEntry(op.entry); err != nil {
-		return fmt.Errorf("error updating journal: %v", err)
+	verifyStep, err := journal.AddStepToCurrentEntry(op.ctx, journal.StepTypeVerify, "Verify file copy", op.path, targetPath)
+	if err != nil {
+		return err
+	}
+
+	// Start verification step
+	if err := journal.StartStep(op.ctx, verifyStep); err != nil {
+		return err
 	}
 
 	// Verify file copy
 	if err := verifyFileCopy(op.path, targetPath, op.fsys); err != nil {
-		op.entry.Steps[len(op.entry.Steps)-1].Status = "failed"
-		op.entry.Steps[len(op.entry.Steps)-1].Error = err.Error()
-		op.entry.Steps[len(op.entry.Steps)-1].EndTime = time.Now()
-		op.journalManager.UpdateEntry(op.entry)
-		op.journalManager.MoveEntry(op.entry, "failed")
+		if err := journal.FailEntry(op.ctx, err); err != nil {
+			return err
+		}
 		return fmt.Errorf("error verifying file copy: %v", err)
 	}
 
-	// Update verification step
-	op.entry.Steps[len(op.entry.Steps)-1].Status = "completed"
-	op.entry.Steps[len(op.entry.Steps)-1].Details = "Successfully verified file contents match"
-	op.entry.Steps[len(op.entry.Steps)-1].EndTime = time.Now()
+	// Complete verification step
+	if err := journal.CompleteStep(op.ctx, verifyStep, "Successfully verified file contents match"); err != nil {
+		return err
+	}
 
 	return nil
 }
 
 func (op *addOperation) complete() error {
-	// Move entry to completed state
-	if err := op.journalManager.UpdateEntry(op.entry); err != nil {
-		return fmt.Errorf("error updating journal: %v", err)
-	}
-	if err := op.journalManager.MoveEntry(op.entry, "completed"); err != nil {
-		return fmt.Errorf("error moving journal entry: %v", err)
-	}
-
-	return nil
+	return journal.CompleteEntry(op.ctx)
 }
 
 func copyFile(src, dst string, fsys dotmanfs.FileSystem) error {

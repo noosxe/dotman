@@ -1,12 +1,11 @@
 package cmd
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 	stdFstest "testing/fstest"
-	"time"
 
-	"github.com/noosxe/dotman/internal/config"
 	dotmanfs "github.com/noosxe/dotman/internal/fs"
 	"github.com/noosxe/dotman/internal/journal"
 )
@@ -27,20 +26,18 @@ func TestAddOperation_Initialize(t *testing.T) {
 		t.Error("config was not initialized")
 	}
 
-	if op.journalManager == nil {
-		t.Error("journalManager was not initialized")
+	// Get entry from context to verify initialization
+	entry, err := journal.GetJournalEntry(op.ctx)
+	if err != nil {
+		t.Errorf("failed to get journal entry: %v", err)
 	}
 
-	if op.entry == nil {
-		t.Error("journal entry was not created")
+	if entry.Operation != journal.OperationTypeAdd {
+		t.Errorf("expected operation '%s', got '%s'", journal.OperationTypeAdd, entry.Operation)
 	}
 
-	if op.entry.Operation != "add" {
-		t.Errorf("expected operation 'add', got '%s'", op.entry.Operation)
-	}
-
-	if op.entry.Source != "test/file" {
-		t.Errorf("expected source 'test/file', got '%s'", op.entry.Source)
+	if entry.Source != "test/file" {
+		t.Errorf("expected source 'test/file', got '%s'", entry.Source)
 	}
 }
 
@@ -77,37 +74,50 @@ func TestAddOperation_VerifySource(t *testing.T) {
 			}
 			mockFS := dotmanfs.NewMockFileSystem(initialState)
 
+			// Initialize operation
 			op := &addOperation{
-				path:           tt.path,
-				fsys:           mockFS,
-				config:         &config.Config{DotmanDir: "dotman"},
-				journalManager: journal.NewJournalManager(mockFS, "dotman/journal"),
-				entry: &journal.JournalEntry{
-					ID:        "test",
-					Timestamp: time.Now(),
-					Operation: "add",
-					State:     "current",
-					Steps:     make([]journal.Step, 0),
-				},
+				path: tt.path,
+				fsys: mockFS,
+				ctx:  context.Background(),
 			}
 
-			err := op.verifySource()
+			// Set up journal manager and entry in context
+			jm := journal.NewJournalManager(mockFS, "dotman/journal")
+			entry, err := jm.CreateEntry(journal.OperationTypeAdd, tt.path, "")
+			if err != nil {
+				t.Fatalf("failed to create journal entry: %v", err)
+			}
+
+			op.ctx = journal.WithJournalManager(op.ctx, jm)
+			op.ctx = journal.WithJournalEntry(op.ctx, entry)
+
+			err = op.verifySource()
 			if tt.expectError {
 				if err == nil {
 					t.Error("expected error but got none")
 				}
-				if op.entry.State != "failed" {
+				// Get updated entry to check state
+				entry, err := journal.GetJournalEntry(op.ctx)
+				if err != nil {
+					t.Fatalf("failed to get journal entry: %v", err)
+				}
+				if entry.State != journal.EntryStateFailed {
 					t.Error("expected entry to be moved to failed state")
 				}
 			} else {
 				if err != nil {
 					t.Errorf("unexpected error: %v", err)
 				}
-				if len(op.entry.Steps) != 1 {
-					t.Errorf("expected 1 step, got %d", len(op.entry.Steps))
+				// Get updated entry to check steps
+				entry, err := journal.GetJournalEntry(op.ctx)
+				if err != nil {
+					t.Fatalf("failed to get journal entry: %v", err)
 				}
-				step := op.entry.Steps[0]
-				if step.Type != "verify" || step.Status != "completed" {
+				if len(entry.Steps) != 1 {
+					t.Errorf("expected 1 step, got %d", len(entry.Steps))
+				}
+				step := entry.Steps[0]
+				if step.Type != journal.StepTypeVerify || step.Status != journal.StepStatusCompleted {
 					t.Errorf("unexpected step: %+v", step)
 				}
 			}
@@ -127,21 +137,24 @@ func TestAddOperation_CopyAndVerifyFile(t *testing.T) {
 		t.Fatalf("failed to create source file: %v", err)
 	}
 
+	// Initialize operation
 	op := &addOperation{
-		path:           sourcePath,
-		fsys:           mockFS,
-		config:         &config.Config{DotmanDir: "dotman"},
-		journalManager: journal.NewJournalManager(mockFS, "dotman/journal"),
-		entry: &journal.JournalEntry{
-			ID:        "test",
-			Timestamp: time.Now(),
-			Operation: "add",
-			State:     "current",
-			Steps:     make([]journal.Step, 0),
-		},
+		path: sourcePath,
+		fsys: mockFS,
+		ctx:  context.Background(),
 	}
 
-	err := op.copyAndVerifyFile(targetPath)
+	// Set up journal manager and entry in context
+	jm := journal.NewJournalManager(mockFS, "dotman/journal")
+	entry, err := jm.CreateEntry(journal.OperationTypeAdd, sourcePath, targetPath)
+	if err != nil {
+		t.Fatalf("failed to create journal entry: %v", err)
+	}
+
+	op.ctx = journal.WithJournalManager(op.ctx, jm)
+	op.ctx = journal.WithJournalEntry(op.ctx, entry)
+
+	err = op.copyAndVerifyFile(targetPath)
 	if err != nil {
 		t.Errorf("copyAndVerifyFile() returned error: %v", err)
 	}
@@ -151,20 +164,25 @@ func TestAddOperation_CopyAndVerifyFile(t *testing.T) {
 		t.Errorf("target file was not created: %v", err)
 	}
 
-	// Verify journal steps
-	if len(op.entry.Steps) != 2 {
-		t.Errorf("expected 2 steps, got %d", len(op.entry.Steps))
+	// Get updated entry to verify journal steps
+	entry, err = journal.GetJournalEntry(op.ctx)
+	if err != nil {
+		t.Fatalf("failed to get journal entry: %v", err)
+	}
+
+	if len(entry.Steps) != 2 {
+		t.Errorf("expected 2 steps, got %d", len(entry.Steps))
 	}
 
 	// Check copy step
-	copyStep := op.entry.Steps[0]
-	if copyStep.Type != "copy" || copyStep.Status != "completed" {
+	copyStep := entry.Steps[0]
+	if copyStep.Type != journal.StepTypeCopy || copyStep.Status != journal.StepStatusCompleted {
 		t.Errorf("unexpected copy step: %+v", copyStep)
 	}
 
 	// Check verify step
-	verifyStep := op.entry.Steps[1]
-	if verifyStep.Type != "verify" || verifyStep.Status != "completed" {
+	verifyStep := entry.Steps[1]
+	if verifyStep.Type != journal.StepTypeVerify || verifyStep.Status != journal.StepStatusCompleted {
 		t.Errorf("unexpected verify step: %+v", verifyStep)
 	}
 }
@@ -181,21 +199,24 @@ func TestAddOperation_CopyAndVerifyDirectory(t *testing.T) {
 	mockFS.MkdirAll(filepath.Join(sourcePath, "subdir"), 0755)
 	mockFS.WriteFile(filepath.Join(sourcePath, "subdir", "file3"), []byte("test3"), 0644)
 
+	// Initialize operation
 	op := &addOperation{
-		path:           sourcePath,
-		fsys:           mockFS,
-		config:         &config.Config{DotmanDir: "dotman"},
-		journalManager: journal.NewJournalManager(mockFS, "dotman/journal"),
-		entry: &journal.JournalEntry{
-			ID:        "test",
-			Timestamp: time.Now(),
-			Operation: "add",
-			State:     "current",
-			Steps:     make([]journal.Step, 0),
-		},
+		path: sourcePath,
+		fsys: mockFS,
+		ctx:  context.Background(),
 	}
 
-	err := op.copyAndVerifyDirectory(targetPath)
+	// Set up journal manager and entry in context
+	jm := journal.NewJournalManager(mockFS, "dotman/journal")
+	entry, err := jm.CreateEntry(journal.OperationTypeAdd, sourcePath, targetPath)
+	if err != nil {
+		t.Fatalf("failed to create journal entry: %v", err)
+	}
+
+	op.ctx = journal.WithJournalManager(op.ctx, jm)
+	op.ctx = journal.WithJournalEntry(op.ctx, entry)
+
+	err = op.copyAndVerifyDirectory(targetPath)
 	if err != nil {
 		t.Errorf("copyAndVerifyDirectory() returned error: %v", err)
 	}
@@ -215,45 +236,60 @@ func TestAddOperation_CopyAndVerifyDirectory(t *testing.T) {
 		}
 	}
 
-	// Verify journal steps
-	if len(op.entry.Steps) != 2 {
-		t.Errorf("expected 2 steps, got %d", len(op.entry.Steps))
+	// Get updated entry to verify journal steps
+	entry, err = journal.GetJournalEntry(op.ctx)
+	if err != nil {
+		t.Fatalf("failed to get journal entry: %v", err)
+	}
+
+	if len(entry.Steps) != 2 {
+		t.Errorf("expected 2 steps, got %d", len(entry.Steps))
 	}
 
 	// Check copy step
-	copyStep := op.entry.Steps[0]
-	if copyStep.Type != "copy" || copyStep.Status != "completed" {
+	copyStep := entry.Steps[0]
+	if copyStep.Type != journal.StepTypeCopy || copyStep.Status != journal.StepStatusCompleted {
 		t.Errorf("unexpected copy step: %+v", copyStep)
 	}
 
 	// Check verify step
-	verifyStep := op.entry.Steps[1]
-	if verifyStep.Type != "verify" || verifyStep.Status != "completed" {
+	verifyStep := entry.Steps[1]
+	if verifyStep.Type != journal.StepTypeVerify || verifyStep.Status != journal.StepStatusCompleted {
 		t.Errorf("unexpected verify step: %+v", verifyStep)
 	}
 }
 
 func TestAddOperation_Complete(t *testing.T) {
 	mockFS := dotmanfs.NewMockFileSystem(nil)
+
+	// Initialize operation
 	op := &addOperation{
-		fsys:           mockFS,
-		config:         &config.Config{DotmanDir: "dotman"},
-		journalManager: journal.NewJournalManager(mockFS, "dotman/journal"),
-		entry: &journal.JournalEntry{
-			ID:        "test",
-			Timestamp: time.Now(),
-			Operation: "add",
-			State:     "current",
-			Steps:     make([]journal.Step, 0),
-		},
+		fsys: mockFS,
+		ctx:  context.Background(),
 	}
 
-	err := op.complete()
+	// Set up journal manager and entry in context
+	jm := journal.NewJournalManager(mockFS, "dotman/journal")
+	entry, err := jm.CreateEntry(journal.OperationTypeAdd, "", "")
+	if err != nil {
+		t.Fatalf("failed to create journal entry: %v", err)
+	}
+
+	op.ctx = journal.WithJournalManager(op.ctx, jm)
+	op.ctx = journal.WithJournalEntry(op.ctx, entry)
+
+	err = op.complete()
 	if err != nil {
 		t.Errorf("complete() returned error: %v", err)
 	}
 
-	if op.entry.State != "completed" {
-		t.Errorf("expected state 'completed', got '%s'", op.entry.State)
+	// Get updated entry to check state
+	entry, err = journal.GetJournalEntry(op.ctx)
+	if err != nil {
+		t.Fatalf("failed to get journal entry: %v", err)
+	}
+
+	if entry.State != journal.EntryStateCompleted {
+		t.Errorf("expected state '%s', got '%s'", journal.EntryStateCompleted, entry.State)
 	}
 }
