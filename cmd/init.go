@@ -82,6 +82,23 @@ configuration files and directory structure.`,
 			os.Exit(1)
 		}
 
+		// Create .gitignore
+		gitignore := filepath.Join(dir, ".gitignore")
+		gitignoreContent := `# dotman specific
+journal/
+config.json
+
+# Common patterns
+*.swp
+*.swo
+*~
+.DS_Store
+`
+		if err := os.WriteFile(gitignore, []byte(gitignoreContent), 0644); err != nil {
+			fmt.Printf("Error creating .gitignore: %v\n", err)
+			os.Exit(1)
+		}
+
 		repo, err := git.PlainInitWithOptions(dir, &git.PlainInitOptions{
 			Bare: false,
 			InitOptions: git.InitOptions{
@@ -105,6 +122,7 @@ configuration files and directory structure.`,
 		}
 
 		wt.Add(".manfile")
+		wt.Add(".gitignore")
 
 		// Get author info from git config
 		gitCfg, err := repo.ConfigScoped(gitconfig.GlobalScope)
