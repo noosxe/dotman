@@ -128,7 +128,7 @@ func TestAddOperation_VerifySource(t *testing.T) {
 
 func TestAddOperation_CopyAndVerifyFile(t *testing.T) {
 	sourcePath := "test/source"
-	targetPath := "dotman/source"
+	targetPath := "dotman/data/source"
 
 	// Create mock file system
 	mockFS := dotmanfs.NewMockFileSystem(nil)
@@ -143,6 +143,9 @@ func TestAddOperation_CopyAndVerifyFile(t *testing.T) {
 		path: sourcePath,
 		fsys: mockFS,
 		ctx:  context.Background(),
+		config: &config.Config{
+			DotmanDir: "dotman",
+		},
 	}
 
 	// Set up journal manager and entry in context
@@ -191,7 +194,7 @@ func TestAddOperation_CopyAndVerifyFile(t *testing.T) {
 func TestAddOperation_CopyAndVerifyDirectory(t *testing.T) {
 	mockFS := dotmanfs.NewMockFileSystem(nil)
 	sourcePath := "test/source"
-	targetPath := "dotman/source"
+	targetPath := "dotman/data/source"
 
 	// Create source directory structure
 	mockFS.MkdirAll(sourcePath, 0755)
@@ -205,6 +208,9 @@ func TestAddOperation_CopyAndVerifyDirectory(t *testing.T) {
 		path: sourcePath,
 		fsys: mockFS,
 		ctx:  context.Background(),
+		config: &config.Config{
+			DotmanDir: "dotman",
+		},
 	}
 
 	// Set up journal manager and entry in context
@@ -297,7 +303,7 @@ func TestAddOperation_Complete(t *testing.T) {
 
 func TestAddOperation_CreateSymlink(t *testing.T) {
 	sourcePath := "test/source"
-	targetPath := "dotman/source"
+	targetPath := "dotman/data/source"
 
 	// Create mock file system
 	mockFS := dotmanfs.NewMockFileSystem(nil)

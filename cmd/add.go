@@ -77,7 +77,7 @@ func (op *addOperation) initialize() error {
 	}
 
 	// Create journal entry
-	entry, err := jm.CreateEntry(journal.OperationTypeAdd, op.path, filepath.Join(cfg.DotmanDir, filepath.Base(op.path)))
+	entry, err := jm.CreateEntry(journal.OperationTypeAdd, op.path, filepath.Join(cfg.DotmanDir, "data", filepath.Base(op.path)))
 	if err != nil {
 		return fmt.Errorf("error creating journal entry: %v", err)
 	}
@@ -122,7 +122,7 @@ func (op *addOperation) verifySource() error {
 
 func (op *addOperation) copyAndVerify() error {
 	info, _ := op.fsys.Stat(op.path)
-	targetPath := filepath.Join(op.config.DotmanDir, filepath.Base(op.path))
+	targetPath := filepath.Join(op.config.DotmanDir, "data", filepath.Base(op.path))
 
 	if info.IsDir() {
 		return op.copyAndVerifyDirectory(targetPath)
@@ -235,7 +235,7 @@ func (op *addOperation) copyAndVerifyFile(targetPath string) error {
 }
 
 func (op *addOperation) createSymlink() error {
-	targetPath := filepath.Join(op.config.DotmanDir, filepath.Base(op.path))
+	targetPath := filepath.Join(op.config.DotmanDir, "data", filepath.Base(op.path))
 
 	// Add symlink step
 	step, err := journal.AddStepToCurrentEntry(op.ctx, journal.StepTypeSymlink, "Create symlink", op.path, targetPath)

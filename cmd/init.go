@@ -75,6 +75,13 @@ configuration files and directory structure.`,
 			os.Exit(1)
 		}
 
+		// Create data directory
+		dataDir := filepath.Join(dir, "data")
+		if err := os.MkdirAll(dataDir, 0755); err != nil {
+			fmt.Printf("Error creating data directory: %v\n", err)
+			os.Exit(1)
+		}
+
 		// Create .manfile
 		manfile := filepath.Join(dir, ".manfile")
 		if err := os.WriteFile(manfile, []byte("{}"), 0644); err != nil {
