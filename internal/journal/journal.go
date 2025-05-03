@@ -25,9 +25,10 @@ const (
 type StepType string
 
 const (
-	StepTypeVerify StepType = "verify"
-	StepTypeCopy   StepType = "copy"
-	StepTypeMove   StepType = "move"
+	StepTypeVerify  StepType = "verify"
+	StepTypeCopy    StepType = "copy"
+	StepTypeMove    StepType = "move"
+	StepTypeSymlink StepType = "symlink"
 )
 
 // OperationType represents the possible types of operations

@@ -6,6 +6,7 @@ import (
 	"testing"
 	stdFstest "testing/fstest"
 
+	"github.com/noosxe/dotman/internal/config"
 	dotmanfs "github.com/noosxe/dotman/internal/fs"
 	"github.com/noosxe/dotman/internal/journal"
 )
@@ -291,5 +292,72 @@ func TestAddOperation_Complete(t *testing.T) {
 
 	if entry.State != journal.EntryStateCompleted {
 		t.Errorf("expected state '%s', got '%s'", journal.EntryStateCompleted, entry.State)
+	}
+}
+
+func TestAddOperation_CreateSymlink(t *testing.T) {
+	sourcePath := "test/source"
+	targetPath := "dotman/source"
+
+	// Create mock file system
+	mockFS := dotmanfs.NewMockFileSystem(nil)
+
+	// Add both source and target files
+	if err := mockFS.WriteFile(sourcePath, []byte("test content"), 0644); err != nil {
+		t.Fatalf("failed to create source file: %v", err)
+	}
+	if err := mockFS.WriteFile(targetPath, []byte("test content"), 0644); err != nil {
+		t.Fatalf("failed to create target file: %v", err)
+	}
+
+	// Initialize operation
+	op := &addOperation{
+		path: sourcePath,
+		fsys: mockFS,
+		ctx:  context.Background(),
+		config: &config.Config{
+			DotmanDir: "dotman",
+		},
+	}
+
+	// Set up journal manager and entry in context
+	jm := journal.NewJournalManager(mockFS, "dotman/journal")
+	entry, err := jm.CreateEntry(journal.OperationTypeAdd, sourcePath, targetPath)
+	if err != nil {
+		t.Fatalf("failed to create journal entry: %v", err)
+	}
+
+	op.ctx = journal.WithJournalManager(op.ctx, jm)
+	op.ctx = journal.WithJournalEntry(op.ctx, entry)
+
+	err = op.createSymlink()
+	if err != nil {
+		t.Errorf("createSymlink() returned error: %v", err)
+	}
+
+	// Verify source path is now a symlink
+	if _, err := mockFS.Stat(sourcePath); err != nil {
+		t.Errorf("symlink was not created: %v", err)
+	}
+
+	// Verify target path still exists
+	if _, err := mockFS.Stat(targetPath); err != nil {
+		t.Errorf("target file was removed: %v", err)
+	}
+
+	// Get updated entry to verify journal steps
+	entry, err = journal.GetJournalEntry(op.ctx)
+	if err != nil {
+		t.Fatalf("failed to get journal entry: %v", err)
+	}
+
+	if len(entry.Steps) != 1 {
+		t.Errorf("expected 1 step, got %d", len(entry.Steps))
+	}
+
+	// Check symlink step
+	symlinkStep := entry.Steps[0]
+	if symlinkStep.Type != journal.StepTypeSymlink || symlinkStep.Status != journal.StepStatusCompleted {
+		t.Errorf("unexpected symlink step: %+v", symlinkStep)
 	}
 }

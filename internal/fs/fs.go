@@ -3,6 +3,7 @@ package fs
 import (
 	"io/fs"
 	"os"
+	"path/filepath"
 	"testing/fstest"
 	"time"
 )
@@ -18,6 +19,8 @@ type FileSystem interface {
 	MkdirAll(path string, perm os.FileMode) error
 	WriteFile(name string, data []byte, perm os.FileMode) error
 	Remove(name string) error
+	RemoveAll(path string) error
+	Symlink(oldname, newname string) error
 
 	// User operations
 	UserHomeDir() (string, error)
@@ -59,6 +62,16 @@ func (f *OSFileSystem) WriteFile(name string, data []byte, perm os.FileMode) err
 // Remove implements FileSystem
 func (f *OSFileSystem) Remove(name string) error {
 	return os.Remove(name)
+}
+
+// RemoveAll implements FileSystem
+func (f *OSFileSystem) RemoveAll(path string) error {
+	return os.RemoveAll(path)
+}
+
+// Symlink implements FileSystem
+func (f *OSFileSystem) Symlink(oldname, newname string) error {
+	return os.Symlink(oldname, newname)
 }
 
 // UserHomeDir implements FileSystem
@@ -114,6 +127,27 @@ func (m *MockFileSystem) ReadFile(name string) ([]byte, error) {
 func (m *MockFileSystem) Remove(name string) error {
 	delete(m.MapFS, name)
 	return nil
+}
+
+// RemoveAll implements FileSystem
+func (m *MockFileSystem) RemoveAll(path string) error {
+	// Remove all files that start with the path
+	for name := range m.MapFS {
+		if name == path || filepath.Dir(name) == path {
+			delete(m.MapFS, name)
+		}
+	}
+	return nil
+}
+
+// Symlink implements FileSystem
+func (m *MockFileSystem) Symlink(oldname, newname string) error {
+	// In the mock filesystem, we'll just copy the file
+	if file, ok := m.MapFS[oldname]; ok {
+		m.MapFS[newname] = file
+		return nil
+	}
+	return os.ErrNotExist
 }
 
 // UserHomeDir implements FileSystem

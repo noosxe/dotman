@@ -55,6 +55,10 @@ func (op *addOperation) run() error {
 		return err
 	}
 
+	if err := op.createSymlink(); err != nil {
+		return err
+	}
+
 	return op.complete()
 }
 
@@ -224,6 +228,44 @@ func (op *addOperation) copyAndVerifyFile(targetPath string) error {
 
 	// Complete verification step
 	if err := journal.CompleteStep(op.ctx, verifyStep, "Successfully verified file contents match"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (op *addOperation) createSymlink() error {
+	targetPath := filepath.Join(op.config.DotmanDir, filepath.Base(op.path))
+
+	// Add symlink step
+	step, err := journal.AddStepToCurrentEntry(op.ctx, journal.StepTypeSymlink, "Create symlink", op.path, targetPath)
+	if err != nil {
+		return err
+	}
+
+	// Start symlink step
+	if err := journal.StartStep(op.ctx, step); err != nil {
+		return err
+	}
+
+	// Remove original file/directory
+	if err := op.fsys.RemoveAll(op.path); err != nil {
+		if err := journal.FailEntry(op.ctx, err); err != nil {
+			return err
+		}
+		return fmt.Errorf("error removing original file/directory: %v", err)
+	}
+
+	// Create symlink
+	if err := op.fsys.Symlink(targetPath, op.path); err != nil {
+		if err := journal.FailEntry(op.ctx, err); err != nil {
+			return err
+		}
+		return fmt.Errorf("error creating symlink: %v", err)
+	}
+
+	// Complete symlink step
+	if err := journal.CompleteStep(op.ctx, step, "Successfully created symlink"); err != nil {
 		return err
 	}
 
