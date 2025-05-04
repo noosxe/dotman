@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/go-git/go-git/v5"
 	"github.com/noosxe/dotman/internal/config"
 	dotmanfs "github.com/noosxe/dotman/internal/fs"
 	"github.com/noosxe/dotman/internal/journal"
@@ -56,6 +57,10 @@ func (op *addOperation) run() error {
 	}
 
 	if err := op.createSymlink(); err != nil {
+		return err
+	}
+
+	if err := op.gitAdd(); err != nil {
 		return err
 	}
 
@@ -266,6 +271,54 @@ func (op *addOperation) createSymlink() error {
 
 	// Complete symlink step
 	if err := journal.CompleteStep(op.ctx, step, "Successfully created symlink"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (op *addOperation) gitAdd() error {
+	// Add git add step
+	step, err := journal.AddStepToCurrentEntry(op.ctx, journal.StepTypeGit, "Add file to git", op.path, "")
+	if err != nil {
+		return err
+	}
+
+	// Start git add step
+	if err := journal.StartStep(op.ctx, step); err != nil {
+		return err
+	}
+
+	// Open the repository
+	repo, err := git.PlainOpen(op.config.DotmanDir)
+	if err != nil {
+		if err := journal.FailEntry(op.ctx, err); err != nil {
+			return err
+		}
+		return fmt.Errorf("error opening repository: %v", err)
+	}
+
+	// Get the worktree
+	worktree, err := repo.Worktree()
+	if err != nil {
+		if err := journal.FailEntry(op.ctx, err); err != nil {
+			return err
+		}
+		return fmt.Errorf("error getting worktree: %v", err)
+	}
+
+	// Add the file to git
+	targetPath := filepath.Join("data", filepath.Base(op.path))
+	fmt.Println("Adding file to git:", targetPath)
+	if _, err := worktree.Add(targetPath); err != nil {
+		if err := journal.FailEntry(op.ctx, err); err != nil {
+			return err
+		}
+		return fmt.Errorf("error adding file to git: %v", err)
+	}
+
+	// Complete git add step
+	if err := journal.CompleteStep(op.ctx, step, "Successfully added file to git"); err != nil {
 		return err
 	}
 

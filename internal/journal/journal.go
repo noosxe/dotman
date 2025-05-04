@@ -29,6 +29,7 @@ const (
 	StepTypeCopy    StepType = "copy"
 	StepTypeMove    StepType = "move"
 	StepTypeSymlink StepType = "symlink"
+	StepTypeGit     StepType = "git"
 )
 
 // OperationType represents the possible types of operations
