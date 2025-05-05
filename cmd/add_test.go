@@ -302,11 +302,12 @@ func TestAddOperation_Complete(t *testing.T) {
 }
 
 func TestAddOperation_CreateSymlink(t *testing.T) {
-	sourcePath := "test/source"
-	targetPath := "dotman/data/source"
+	// Set up mock home directory
+	mockFS := dotmanfs.NewMockFileSystemWithHome(nil, "home/test")
 
-	// Create mock file system
-	mockFS := dotmanfs.NewMockFileSystem(nil)
+	// Create paths relative to home directory
+	sourcePath := "home/test/.config/nvim/init.lua"
+	targetPath := "dotman/data/.config/nvim/init.lua"
 
 	// Add both source and target files
 	if err := mockFS.WriteFile(sourcePath, []byte("test content"), 0644); err != nil {
@@ -328,7 +329,7 @@ func TestAddOperation_CreateSymlink(t *testing.T) {
 
 	// Set up journal manager and entry in context
 	jm := journal.NewJournalManager(mockFS, "dotman/journal")
-	entry, err := jm.CreateEntry(journal.OperationTypeAdd, sourcePath, targetPath)
+	entry, err := jm.CreateEntry(journal.OperationTypeAdd, sourcePath, ".config/nvim/init.lua")
 	if err != nil {
 		t.Fatalf("failed to create journal entry: %v", err)
 	}

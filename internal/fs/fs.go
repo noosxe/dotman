@@ -111,6 +111,23 @@ func NewMockFileSystem(files map[string]*fstest.MapFile) *MockFileSystem {
 	}
 }
 
+// NewMockFileSystemWithHome creates a new MockFileSystem with a custom home directory
+func NewMockFileSystemWithHome(files map[string]*fstest.MapFile, homeDir string) *MockFileSystem {
+	if files == nil {
+		files = make(map[string]*fstest.MapFile)
+	}
+	mfs := fstest.MapFS(files)
+	return &MockFileSystem{
+		MapFS:   mfs,
+		homeDir: homeDir,
+	}
+}
+
+// SetHomeDir sets the home directory for the mock filesystem
+func (m *MockFileSystem) SetHomeDir(dir string) {
+	m.homeDir = dir
+}
+
 // MkdirAll creates directories in the mock filesystem
 func (m *MockFileSystem) MkdirAll(path string, perm os.FileMode) error {
 	m.MapFS[path] = &fstest.MapFile{
