@@ -24,6 +24,10 @@ type FileSystem interface {
 
 	// User operations
 	UserHomeDir() (string, error)
+
+	// Path operations
+	Abs(path string) (string, error)
+	Rel(basepath, targpath string) (string, error)
 }
 
 // OSFileSystem implements FileSystem using the real filesystem
@@ -77,6 +81,16 @@ func (f *OSFileSystem) Symlink(oldname, newname string) error {
 // UserHomeDir implements FileSystem
 func (f *OSFileSystem) UserHomeDir() (string, error) {
 	return os.UserHomeDir()
+}
+
+// Abs implements FileSystem
+func (f *OSFileSystem) Abs(path string) (string, error) {
+	return filepath.Abs(path)
+}
+
+// Rel implements FileSystem
+func (f *OSFileSystem) Rel(basepath, targpath string) (string, error) {
+	return filepath.Rel(basepath, targpath)
 }
 
 // MockFileSystem implements FileSystem for testing
@@ -153,6 +167,18 @@ func (m *MockFileSystem) Symlink(oldname, newname string) error {
 // UserHomeDir implements FileSystem
 func (m *MockFileSystem) UserHomeDir() (string, error) {
 	return m.homeDir, nil
+}
+
+// Abs implements FileSystem
+func (m *MockFileSystem) Abs(path string) (string, error) {
+	// In the mock filesystem, we'll just return the path as is
+	return path, nil
+}
+
+// Rel implements FileSystem
+func (m *MockFileSystem) Rel(basepath, targpath string) (string, error) {
+	// In the mock filesystem, we'll just return the path as is
+	return targpath, nil
 }
 
 // mapFileInfo wraps fstest.MapFile to implement fs.FileInfo

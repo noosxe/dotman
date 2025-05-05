@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/noosxe/dotman/internal/config"
@@ -75,14 +76,37 @@ func (op *addOperation) initialize() error {
 	}
 	op.config = cfg
 
+	// Get user's home directory using fsys
+	homeDir, err := op.fsys.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("error getting user home directory: %v", err)
+	}
+
+	// Check if the path is within the home directory
+	absPath, err := op.fsys.Abs(op.path)
+	if err != nil {
+		return fmt.Errorf("error getting absolute path: %v", err)
+	}
+
+	// Get relative path from home directory
+	relPath, err := op.fsys.Rel(homeDir, absPath)
+	if err != nil {
+		return fmt.Errorf("error getting relative path: %v", err)
+	}
+
+	// If the path is not within home directory, return error
+	if relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("path must be within user's home directory")
+	}
+
 	// Initialize journal manager
 	jm := journal.NewJournalManager(op.fsys, filepath.Join(cfg.DotmanDir, "journal"))
 	if err := jm.Initialize(); err != nil {
 		return fmt.Errorf("error initializing journal: %v", err)
 	}
 
-	// Create journal entry
-	entry, err := jm.CreateEntry(journal.OperationTypeAdd, op.path, filepath.Join(cfg.DotmanDir, "data", filepath.Base(op.path)))
+	// Create journal entry with the relative path as target
+	entry, err := jm.CreateEntry(journal.OperationTypeAdd, op.path, relPath)
 	if err != nil {
 		return fmt.Errorf("error creating journal entry: %v", err)
 	}
@@ -127,7 +151,8 @@ func (op *addOperation) verifySource() error {
 
 func (op *addOperation) copyAndVerify() error {
 	info, _ := op.fsys.Stat(op.path)
-	targetPath := filepath.Join(op.config.DotmanDir, "data", filepath.Base(op.path))
+	entry, _ := journal.GetJournalEntry(op.ctx)
+	targetPath := filepath.Join(op.config.DotmanDir, "data", entry.Target)
 
 	if info.IsDir() {
 		return op.copyAndVerifyDirectory(targetPath)
@@ -240,7 +265,8 @@ func (op *addOperation) copyAndVerifyFile(targetPath string) error {
 }
 
 func (op *addOperation) createSymlink() error {
-	targetPath := filepath.Join(op.config.DotmanDir, "data", filepath.Base(op.path))
+	entry, _ := journal.GetJournalEntry(op.ctx)
+	targetPath := filepath.Join(op.config.DotmanDir, "data", entry.Target)
 
 	// Add symlink step
 	step, err := journal.AddStepToCurrentEntry(op.ctx, journal.StepTypeSymlink, "Create symlink", op.path, targetPath)
@@ -307,8 +333,9 @@ func (op *addOperation) gitAdd() error {
 		return fmt.Errorf("error getting worktree: %v", err)
 	}
 
-	// Add the file to git
-	targetPath := filepath.Join("data", filepath.Base(op.path))
+	// Add the file to git using the relative path
+	entry, _ := journal.GetJournalEntry(op.ctx)
+	targetPath := filepath.Join("data", entry.Target)
 	fmt.Println("Adding file to git:", targetPath)
 	if _, err := worktree.Add(targetPath); err != nil {
 		if err := journal.FailEntry(op.ctx, err); err != nil {
