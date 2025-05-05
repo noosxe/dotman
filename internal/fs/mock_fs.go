@@ -104,8 +104,19 @@ func (m *MockFileSystem) Abs(path string) (string, error) {
 
 // Rel implements FileSystem
 func (m *MockFileSystem) Rel(basepath, targpath string) (string, error) {
-	// In the mock filesystem, we'll just return the path as is
-	return targpath, nil
+	// Clean the paths to handle any ".." or "." components
+	basepath = filepath.Clean(basepath)
+	targpath = filepath.Clean(targpath)
+
+	// Check if target path is under base path
+	rel, err := filepath.Rel(basepath, targpath)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || len(rel) > 2 && rel[:3] == ".."+string(filepath.Separator) {
+		return "", os.ErrInvalid
+	}
+	return rel, nil
 }
 
 // mapFileInfo wraps fstest.MapFile to implement fs.FileInfo

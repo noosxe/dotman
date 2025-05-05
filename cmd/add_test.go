@@ -12,10 +12,22 @@ import (
 )
 
 func TestAddOperation_Initialize(t *testing.T) {
-	mockFS := dotmanfs.NewMockFileSystem(nil)
+	// Set up mock filesystem with home directory
+	mockFS := dotmanfs.NewMockFileSystemWithHome(nil, "/home/test")
+
+	// Create test file
+	sourcePath := "/home/test/test/file"
+	if err := mockFS.MkdirAll(filepath.Dir(sourcePath), 0755); err != nil {
+		t.Fatalf("failed to create directory: %v", err)
+	}
+	if err := mockFS.WriteFile(sourcePath, []byte("test content"), 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
 	op := &addOperation{
-		path: "test/file",
+		path: sourcePath,
 		fsys: mockFS,
+		ctx:  context.Background(),
 	}
 
 	err := op.initialize()
@@ -37,8 +49,8 @@ func TestAddOperation_Initialize(t *testing.T) {
 		t.Errorf("expected operation '%s', got '%s'", journal.OperationTypeAdd, entry.Operation)
 	}
 
-	if entry.Source != "test/file" {
-		t.Errorf("expected source 'test/file', got '%s'", entry.Source)
+	if entry.Source != sourcePath {
+		t.Errorf("expected source '%s', got '%s'", sourcePath, entry.Source)
 	}
 }
 
