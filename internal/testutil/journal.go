@@ -1,8 +1,11 @@
 package testutil
 
 import (
+	"context"
+	"path/filepath"
 	"testing"
 
+	"github.com/noosxe/dotman/internal/fs"
 	"github.com/noosxe/dotman/internal/journal"
 )
 
@@ -107,5 +110,42 @@ func VerifyEntryWithChecksum(t *testing.T, entry *journal.JournalEntry, expected
 
 	if entry.Checksum != expectedChecksum {
 		t.Fatalf("expected checksum '%s', got '%s'", expectedChecksum, entry.Checksum)
+	}
+}
+
+// SetupJournalManager creates and initializes a journal manager for testing
+func SetupJournalManager(t *testing.T, fsys fs.FileSystem, dotmanDir string) *journal.JournalManager {
+	jm := journal.NewJournalManager(fsys, filepath.Join(dotmanDir, "journal"))
+	if err := jm.Initialize(); err != nil {
+		t.Fatalf("failed to initialize journal: %v", err)
+	}
+	return jm
+}
+
+// SetupContextWithJournal creates a context with a journal manager and entry
+func SetupContextWithJournal(t *testing.T, jm *journal.JournalManager, operationType journal.OperationType, source, target string) context.Context {
+	ctx := context.Background()
+	ctx = journal.WithJournalManager(ctx, jm)
+
+	entry, err := jm.CreateEntry(operationType, source, target)
+	if err != nil {
+		t.Fatalf("failed to create journal entry: %v", err)
+	}
+
+	ctx = journal.WithJournalEntry(ctx, entry)
+	return ctx
+}
+
+// VerifyJournalEntryCount verifies that there are exactly the expected number of entries with the given state
+func VerifyJournalEntryCount(t *testing.T, jm *journal.JournalManager, state journal.EntryState, expectedCount int) {
+	t.Helper()
+
+	entries, err := jm.ListEntries(state)
+	if err != nil {
+		t.Fatalf("failed to get journal entries: %v", err)
+	}
+
+	if len(entries) != expectedCount {
+		t.Fatalf("expected %d entries with state '%s', got %d", expectedCount, state, len(entries))
 	}
 }

@@ -66,7 +66,7 @@ The journal keeps track of all operations performed by dotman.`,
 		} else {
 			// Get entries for each specified state
 			for _, state := range stateFilters {
-				entries, err := jm.ListEntries(state)
+				entries, err := jm.ListEntries(journal.EntryState(state))
 				if err != nil {
 					return fmt.Errorf("error listing journal entries for state '%s': %v", state, err)
 				}

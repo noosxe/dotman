@@ -355,14 +355,14 @@ func (jm *JournalManager) GetEntry(id string) (*JournalEntry, error) {
 }
 
 // ListEntries lists all journal entries in a given state
-func (jm *JournalManager) ListEntries(state string) ([]*JournalEntry, error) {
+func (jm *JournalManager) ListEntries(state EntryState) ([]*JournalEntry, error) {
 	entries := make([]*JournalEntry, 0)
 
 	// If state is empty, list entries from all states
 	states := []EntryState{EntryStateCurrent, EntryStateCompleted, EntryStateFailed}
 	if state != "" {
 		// If state is specified, only use that state
-		states = []EntryState{EntryState(state)}
+		states = []EntryState{state}
 	}
 
 	// Read entries from each state directory
