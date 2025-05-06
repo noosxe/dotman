@@ -39,6 +39,7 @@ const (
 	OperationTypeAdd    OperationType = "add"
 	OperationTypeRemove OperationType = "remove"
 	OperationTypeLink   OperationType = "link"
+	OperationTypeCommit OperationType = "commit"
 )
 
 // EntryState represents the possible states of a journal entry
@@ -82,18 +83,32 @@ func WithJournalEntry(ctx context.Context, entry *JournalEntry) context.Context 
 
 // GetJournalManager retrieves the JournalManager from the context
 func GetJournalManager(ctx context.Context) (*JournalManager, error) {
-	jm, ok := ctx.Value(journalManagerKey).(*JournalManager)
+	value := ctx.Value(journalManagerKey)
+	if value == nil {
+		return nil, fmt.Errorf("journal manager not found in context - this usually means the operation was not properly initialized with a journal manager")
+	}
+	jm, ok := value.(*JournalManager)
 	if !ok {
-		return nil, fmt.Errorf("journal manager not found in context")
+		return nil, fmt.Errorf("invalid journal manager type in context - expected *JournalManager, got %T", value)
+	}
+	if jm == nil {
+		return nil, fmt.Errorf("nil journal manager in context - this indicates a programming error")
 	}
 	return jm, nil
 }
 
 // GetJournalEntry retrieves the JournalEntry from the context
 func GetJournalEntry(ctx context.Context) (*JournalEntry, error) {
-	entry, ok := ctx.Value(journalEntryKey).(*JournalEntry)
+	value := ctx.Value(journalEntryKey)
+	if value == nil {
+		return nil, fmt.Errorf("journal entry not found in context - this usually means the operation was not properly initialized with a journal entry")
+	}
+	entry, ok := value.(*JournalEntry)
 	if !ok {
-		return nil, fmt.Errorf("journal entry not found in context")
+		return nil, fmt.Errorf("invalid journal entry type in context - expected *JournalEntry, got %T", value)
+	}
+	if entry == nil {
+		return nil, fmt.Errorf("nil journal entry in context - this indicates a programming error")
 	}
 	return entry, nil
 }
@@ -173,16 +188,16 @@ func FailStep(ctx context.Context, step *Step, err error) error {
 func FailEntry(ctx context.Context, err error) error {
 	entry, err2 := GetJournalEntry(ctx)
 	if err2 != nil {
-		return err2
+		return fmt.Errorf("failed to get journal entry: %v", err2)
 	}
 	jm, err2 := GetJournalManager(ctx)
 	if err2 != nil {
-		return err2
+		return fmt.Errorf("failed to get journal manager: %v", err2)
 	}
 
 	// Get the last step
 	if len(entry.Steps) == 0 {
-		return fmt.Errorf("no steps in entry")
+		return fmt.Errorf("no steps in entry %s - this indicates a programming error", entry.ID)
 	}
 	step := &entry.Steps[len(entry.Steps)-1]
 
@@ -193,11 +208,15 @@ func FailEntry(ctx context.Context, err error) error {
 
 	// Update entry
 	if err := jm.UpdateEntry(entry); err != nil {
-		return err
+		return fmt.Errorf("failed to update journal entry %s: %v", entry.ID, err)
 	}
 
 	// Move entry to failed state
-	return jm.MoveEntry(entry, EntryStateFailed)
+	if err := jm.MoveEntry(entry, EntryStateFailed); err != nil {
+		return fmt.Errorf("failed to move journal entry %s to failed state: %v", entry.ID, err)
+	}
+
+	return nil
 }
 
 // CompleteEntry moves the entry to the completed state
@@ -312,9 +331,11 @@ func (jm *JournalManager) MoveEntry(entry *JournalEntry, newState EntryState) er
 		return fmt.Errorf("error writing entry: %v", err)
 	}
 
-	// Remove old file
-	if err := jm.fsys.Remove(oldPath); err != nil {
-		return fmt.Errorf("error removing old entry: %v", err)
+	// Remove old file if it exists
+	if _, err := jm.fsys.Stat(oldPath); err == nil {
+		if err := jm.fsys.Remove(oldPath); err != nil {
+			return fmt.Errorf("error removing old entry: %v", err)
+		}
 	}
 
 	return nil

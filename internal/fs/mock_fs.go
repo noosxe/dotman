@@ -1,9 +1,12 @@
 package fs
 
 import (
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing/fstest"
 	"time"
 )
@@ -141,4 +144,113 @@ func (m *MockFileSystem) Stat(name string) (fs.FileInfo, error) {
 		}, nil
 	}
 	return nil, os.ErrNotExist
+}
+
+// Open implements fs.FS
+func (m *MockFileSystem) Open(name string) (fs.File, error) {
+	if file, ok := m.MapFS[name]; ok {
+		return &mockFile{
+			name:   name,
+			data:   file.Data,
+			mode:   file.Mode,
+			offset: 0,
+			fs:     m,
+		}, nil
+	}
+	return nil, os.ErrNotExist
+}
+
+// mockFile implements fs.File
+type mockFile struct {
+	name   string
+	data   []byte
+	mode   fs.FileMode
+	offset int64
+	fs     *MockFileSystem
+}
+
+// Stat implements fs.File
+func (f *mockFile) Stat() (fs.FileInfo, error) {
+	return &mapFileInfo{
+		MapFile: &fstest.MapFile{
+			Data: f.data,
+			Mode: f.mode,
+		},
+		name: f.name,
+	}, nil
+}
+
+// Read implements fs.File
+func (f *mockFile) Read(p []byte) (n int, err error) {
+	if f.offset >= int64(len(f.data)) {
+		return 0, io.EOF
+	}
+	n = copy(p, f.data[f.offset:])
+	f.offset += int64(n)
+	return n, nil
+}
+
+// Close implements fs.File
+func (f *mockFile) Close() error {
+	return nil
+}
+
+// mockDirEntry implements fs.DirEntry
+type mockDirEntry struct {
+	name string
+	mode fs.FileMode
+}
+
+func (d *mockDirEntry) Name() string               { return d.name }
+func (d *mockDirEntry) IsDir() bool                { return d.mode.IsDir() }
+func (d *mockDirEntry) Type() fs.FileMode          { return d.mode.Type() }
+func (d *mockDirEntry) Info() (fs.FileInfo, error) { return nil, nil }
+
+// ReadDir implements fs.ReadDirFile
+func (f *mockFile) ReadDir(n int) ([]fs.DirEntry, error) {
+	if !f.mode.IsDir() {
+		return nil, os.ErrInvalid
+	}
+
+	// Find all files under this directory
+	var entries []fs.DirEntry
+	dirPath := f.name
+	if !strings.HasSuffix(dirPath, "/") {
+		dirPath += "/"
+	}
+
+	for name, file := range f.fs.MapFS {
+		// Skip if not under this directory
+		if !strings.HasPrefix(name, dirPath) {
+			continue
+		}
+
+		// Get the relative path
+		relPath := strings.TrimPrefix(name, dirPath)
+		if relPath == "" {
+			continue
+		}
+
+		// Only include immediate children
+		if strings.Contains(relPath, "/") {
+			continue
+		}
+
+		entries = append(entries, &mockDirEntry{
+			name: relPath,
+			mode: file.Mode,
+		})
+	}
+
+	// Sort entries by name
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
+
+	// Handle n parameter
+	if n > 0 && len(entries) > n {
+		entries = entries[:n]
+	}
+
+	return entries, nil
 }
