@@ -1,0 +1,68 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+## Overview
+
+In our project we have to interact with file systems a lot. For that reason we developed a file system abstraction that is stored under <project_root>/internal/fs directory. Contents of our internal fs package are:
+- `fs.go` contains general interfaces used throughout the project.
+- `os_fs.go` contains the file system interface implementation working with the real file system.
+- `mock_fs.go` contains the mock implementation that stores "files" in memory.
+- `billy_fs.go` contains the implementation used with go-git facilities to abstract away the "real" fs.
+
+## Core Interface
+
+The main interface `FileSystem` provides the following key operations:
+- File operations (Read, Write, Delete, etc.)
+- Directory operations (Create, List, etc.)
+- Path operations (Join, Clean, etc.)
+- File information (Stat, Exists, etc.)
+
+## Implementation Guidelines
+
+1. **OS File System (`os_fs`)**
+   - Used in production code
+   - Provides real file system operations
+   - Handles actual file I/O
+
+2. **Mock File System (`mock_fs`)**
+   - Used exclusively in tests
+   - Stores files in memory
+   - Provides deterministic behavior for testing
+   - Should be used for all unit tests
+
+3. **Billy File System (`billy_fs`)**
+   - Used specifically for git operations
+   - Wraps either `os_fs` or `mock_fs`
+   - Required for go-git integration
+
+## Rules
+
+1. **General Usage**
+   - All code MUST use our fs abstraction interface instead of real fs operations
+   - If fs abstraction interface does not contain a necessary func, add it and implement for all: `os_fs`, `mock_fs`, `billy_fs`
+   - All cmds MUST use our globally defined `fsys` variable from `root.go`
+
+2. **Testing**
+   - All tests MUST use `mock_fs` when passing `fsys` to test subjects
+   - When testing go-git related functionality:
+     - Construct both `mock_fs` and `billy_fs`
+     - Pass `billy_fs` as the worktree only
+     - Use memory storage for git operations
+   - Clean up test data after each test
+   - Use test fixtures for complex file system setups
+
+3. **Error Handling**
+   - Always check and handle errors from file system operations
+   - Use appropriate error types from the fs package
+   - Log errors with sufficient context
+
+4. **Performance**
+   - Use appropriate buffering for large file operations
+   - Consider caching for frequently accessed files
+   - Be mindful of memory usage when using `mock_fs` in tests
+
+## Examples
+
+[Add example code snippets showing proper usage of each implementation]

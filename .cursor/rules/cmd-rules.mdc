@@ -1,0 +1,75 @@
+---
+description: 
+globs: cmd/*.go
+alwaysApply: false
+---
+# cmd creation and maintenance rules
+
+## Operation Structure
+```go
+// exampleOperation represents the state of an example operation
+type exampleOperation struct {
+	// mandatory fields that are usually necessary for all/most of cmds/operations
+	config *config.Config
+	fsys   dotmanfs.FileSystem
+	ctx    context.Context
+
+    // additional fields required for specific cmds/operations
+}
+```
+
+## Operation Lifecycle
+1. **Entry Point** (`run()`)
+   - Must be the first function called
+   - Orchestrates the entire operation lifecycle
+   - Must call in sequence:
+     1. `initialize()`
+     2. High-level operation steps
+     3. `complete()` (only on success)
+   - Must return error if any step fails
+   - Must not call `complete()` if any step fails
+   - Must ensure proper cleanup on failure
+
+2. **Initialization** (`initialize()`)
+   - Called by `run()`
+   - Create journal manager instance
+   - Create a new journal entry
+   - Create a new context with journal manager and entry
+   - Return error if any initialization step fails
+   - Must not be called directly by other code
+   - Must not load config (config should be loaded in cobra's RunE)
+
+3. **High-Level Steps**
+   - Called by `run()` after successful initialization
+   - Execute the main operation logic
+   - Create and manage journal steps
+   - Handle errors appropriately:
+     - Use `journal.FailEntry()` for operation-level failures
+     - Return errors for step-level failures
+   - Must not call `initialize()` or `complete()`
+
+4. **Completion** (`complete()`)
+   - Called by `run()` only after all steps succeed
+   - Complete the journal entry
+   - Clean up any resources
+   - Return error if completion fails
+   - Must not be called directly by other code
+
+## Context Management
+- Store operation-specific values in context
+- Respect context cancellation
+- Handle context deadlines appropriately
+- Use context for passing journal manager and entry
+
+## Step Management
+- Create steps for significant operations
+- Use descriptive step messages
+- Handle step failures appropriately
+- Consider step dependencies
+
+## Testing Requirements
+- Test `initialize()` function
+- Test `complete()` function
+- Test error handling
+- Verify journal entries and steps
+- Mock filesystem and journal manager

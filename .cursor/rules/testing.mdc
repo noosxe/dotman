@@ -1,0 +1,6 @@
+---
+description: 
+globs: *_test.go
+alwaysApply: false
+---
+In tests use `t.Fatal` and `t.Fatalf` to assert a test failure instead of `error` variants.
