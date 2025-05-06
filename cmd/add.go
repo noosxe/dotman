@@ -30,9 +30,17 @@ var addCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		path, _ := cmd.Flags().GetString("path")
 
+		// Load config
+		cfg, err := config.LoadConfig(configPath, fsys)
+		if err != nil {
+			fmt.Printf("Error loading config: %v\n", err)
+			os.Exit(1)
+		}
+
 		op := &addOperation{
-			path: path,
-			fsys: fsys,
+			path:   path,
+			fsys:   fsys,
+			config: cfg,
 		}
 
 		if err := op.run(); err != nil {
@@ -69,13 +77,6 @@ func (op *addOperation) run() error {
 }
 
 func (op *addOperation) initialize() error {
-	// Load config
-	cfg, err := config.LoadConfig(configPath, op.fsys)
-	if err != nil {
-		return fmt.Errorf("error loading config: %v", err)
-	}
-	op.config = cfg
-
 	// Get user's home directory using fsys
 	homeDir, err := op.fsys.UserHomeDir()
 	if err != nil {
@@ -100,7 +101,7 @@ func (op *addOperation) initialize() error {
 	}
 
 	// Initialize journal manager
-	jm := journal.NewJournalManager(op.fsys, filepath.Join(cfg.DotmanDir, "journal"))
+	jm := journal.NewJournalManager(op.fsys, filepath.Join(op.config.DotmanDir, "journal"))
 	if err := jm.Initialize(); err != nil {
 		return fmt.Errorf("error initializing journal: %v", err)
 	}
