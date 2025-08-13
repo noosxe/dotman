@@ -40,6 +40,7 @@ const (
 	OperationTypeRemove OperationType = "remove"
 	OperationTypeLink   OperationType = "link"
 	OperationTypeCommit OperationType = "commit"
+	OperationTypePush   OperationType = "push"
 )
 
 // EntryState represents the possible states of a journal entry

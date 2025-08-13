@@ -95,3 +95,21 @@ func SetupTestConfig(t *testing.T, fsys dotmanfs.FileSystem, dotmanDir string) *
 	}
 	return cfg
 }
+
+func SetupBareRepo(t *testing.T, fsys dotmanfs.FileSystem, storage storage.Storer, dir string) *git.Repository {
+	// fsys.MkdirAll(dir, 0755)
+
+	// Create billy filesystem adapter
+	billyFs := dotmanfs.NewBillyFileSystem(fsys, dir)
+
+	memStorage := memory.NewStorage()
+
+	repo, err := git.InitWithOptions(memStorage, billyFs, git.InitOptions{
+		DefaultBranch: "refs/heads/main",
+	})
+
+	if err != nil {
+		t.Fatalf("failed to initialize git repository: %v", err)
+	}
+	return repo
+}
