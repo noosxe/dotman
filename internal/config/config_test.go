@@ -11,7 +11,12 @@ import (
 
 func TestLoadConfig_NewConfig(t *testing.T) {
 	// Create a mock filesystem
-	mockFS := fs.NewMockFileSystem(nil)
+	mockFS, err := fs.NewMockFileSystem(nil)
+	if err != nil {
+		t.Fatalf("failed to create mock filesystem: %v", err)
+	}
+	defer mockFS.CleanUp()
+
 	configPath := "config.json"
 
 	cfg, err := LoadConfig(configPath, mockFS)
@@ -35,11 +40,15 @@ func TestLoadConfig_ExistingConfig(t *testing.T) {
 		t.Fatalf("Failed to marshal test config: %v", err)
 	}
 
-	mockFS := fs.NewMockFileSystem(map[string]*fstest.MapFile{
+	mockFS, err := fs.NewMockFileSystem(map[string]*fstest.MapFile{
 		"config.json": {
 			Data: data,
 		},
 	})
+	if err != nil {
+		t.Fatalf("failed to create mock filesystem: %v", err)
+	}
+	defer mockFS.CleanUp()
 
 	configPath := "config.json"
 	cfg, err := LoadConfig(configPath, mockFS)
@@ -53,13 +62,18 @@ func TestLoadConfig_ExistingConfig(t *testing.T) {
 }
 
 func TestSaveConfig(t *testing.T) {
-	mockFS := fs.NewMockFileSystem(nil)
+	mockFS, err := fs.NewMockFileSystem(nil)
+	if err != nil {
+		t.Fatalf("failed to create mock filesystem: %v", err)
+	}
+	defer mockFS.CleanUp()
+
 	configPath := "config.json"
 	cfg := &Config{
 		DotmanDir: "/test/dotman",
 	}
 
-	err := SaveConfig(configPath, cfg, mockFS)
+	err = SaveConfig(configPath, cfg, mockFS)
 	if err != nil {
 		t.Fatalf("SaveConfig failed: %v", err)
 	}

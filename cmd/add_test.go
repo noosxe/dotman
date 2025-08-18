@@ -14,11 +14,16 @@ import (
 
 func TestAddOperation_Initialize(t *testing.T) {
 	// Set up mock filesystem with home directory
-	mockFS := dotmanfs.NewMockFileSystemWithHome(nil, "/home/test")
+	mockFS, err := dotmanfs.NewMockFileSystemWithHome(nil, "/home/test")
+	if err != nil {
+		t.Fatalf("failed to create mock filesystem: %v", err)
+	}
+	defer mockFS.CleanUp()
 
 	// Create test file
 	sourcePath := "/home/test/test/file"
 	if err := mockFS.MkdirAll(filepath.Dir(sourcePath), 0755); err != nil {
+
 		t.Fatalf("failed to create directory: %v", err)
 	}
 	if err := mockFS.WriteFile(sourcePath, []byte("test content"), 0644); err != nil {
@@ -35,7 +40,7 @@ func TestAddOperation_Initialize(t *testing.T) {
 		config: cfg,
 	}
 
-	err := op.initialize()
+	err = op.initialize()
 	if err != nil {
 		t.Fatalf("initialize() returned error: %v", err)
 	}
@@ -83,7 +88,11 @@ func TestAddOperation_VerifySource(t *testing.T) {
 					Mode: 0644,
 				}
 			}
-			mockFS := dotmanfs.NewMockFileSystem(initialState)
+			mockFS, err := dotmanfs.NewMockFileSystem(initialState)
+			if err != nil {
+				t.Fatalf("failed to create mock filesystem: %v", err)
+			}
+			defer mockFS.CleanUp()
 
 			// Initialize operation
 			op := &addOperation{
@@ -138,11 +147,23 @@ func TestAddOperation_CopyAndVerifyFile(t *testing.T) {
 	targetPath := "dotman/data/source"
 
 	// Create mock file system
-	mockFS := dotmanfs.NewMockFileSystem(nil)
+	mockFS, err := dotmanfs.NewMockFileSystem(nil)
+	if err != nil {
+		t.Fatalf("failed to create mock filesystem: %v", err)
+	}
+	defer mockFS.CleanUp()
 
 	// Add source file
+	if err := mockFS.MkdirAll(filepath.Dir(sourcePath), 0755); err != nil {
+		t.Fatalf("failed to create source file dir: %v", err)
+	}
 	if err := mockFS.WriteFile(sourcePath, []byte("test content"), 0644); err != nil {
 		t.Fatalf("failed to create source file: %v", err)
+	}
+
+	// Create target dirs
+	if err := mockFS.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+		t.Fatalf("failed to create target dirs: %v", err)
 	}
 
 	// Initialize operation
@@ -190,16 +211,29 @@ func TestAddOperation_CopyAndVerifyFile(t *testing.T) {
 }
 
 func TestAddOperation_CopyAndVerifyDirectory(t *testing.T) {
-	mockFS := dotmanfs.NewMockFileSystem(nil)
+	initialState := map[string]*stdFstest.MapFile{
+		"test/source/file1": &stdFstest.MapFile{
+			Data: []byte("test1"),
+			Mode: 0644,
+		},
+		"test/source/file2": &stdFstest.MapFile{
+			Data: []byte("test2"),
+			Mode: 0644,
+		},
+		"test/source/subdir/file3": &stdFstest.MapFile{
+			Data: []byte("test3"),
+			Mode: 0644,
+		},
+	}
+
+	mockFS, err := dotmanfs.NewMockFileSystem(initialState)
+	if err != nil {
+		t.Fatalf("failed to create mock filesystem: %v", err)
+	}
+	defer mockFS.CleanUp()
+
 	sourcePath := "test/source"
 	targetPath := "dotman/data/source"
-
-	// Create source directory structure
-	mockFS.MkdirAll(sourcePath, 0755)
-	mockFS.WriteFile(filepath.Join(sourcePath, "file1"), []byte("test1"), 0644)
-	mockFS.WriteFile(filepath.Join(sourcePath, "file2"), []byte("test2"), 0644)
-	mockFS.MkdirAll(filepath.Join(sourcePath, "subdir"), 0755)
-	mockFS.WriteFile(filepath.Join(sourcePath, "subdir", "file3"), []byte("test3"), 0644)
 
 	// Initialize operation
 	op := &addOperation{
@@ -223,7 +257,7 @@ func TestAddOperation_CopyAndVerifyDirectory(t *testing.T) {
 
 	err = op.copyAndVerifyDirectory(targetPath)
 	if err != nil {
-		t.Fatalf("copyAndVerifyDirectory() returned error: %v", err)
+		t.Fatalf("copyAndVerifyDirectory() returned error: %v\ndumping directory tree:\n\n%v", err, mockFS.DumpTree())
 	}
 
 	// Verify directory structure was copied
@@ -256,7 +290,11 @@ func TestAddOperation_CopyAndVerifyDirectory(t *testing.T) {
 }
 
 func TestAddOperation_Complete(t *testing.T) {
-	mockFS := dotmanfs.NewMockFileSystem(nil)
+	mockFS, err := dotmanfs.NewMockFileSystem(nil)
+	if err != nil {
+		t.Fatalf("failed to create mock filesystem: %v", err)
+	}
+	defer mockFS.CleanUp()
 
 	// Initialize operation
 	op := &addOperation{
@@ -290,19 +328,25 @@ func TestAddOperation_Complete(t *testing.T) {
 
 func TestAddOperation_CreateSymlink(t *testing.T) {
 	// Set up mock home directory
-	mockFS := dotmanfs.NewMockFileSystemWithHome(nil, "home/test")
+	initialState := map[string]*stdFstest.MapFile{
+		"home/test/.config/nvim/init.lua": &stdFstest.MapFile{
+			Data: []byte("test content"),
+			Mode: 0644,
+		},
+		"dotman/data/.config/nvim/init.lua": &stdFstest.MapFile{
+			Data: []byte("test content"),
+			Mode: 0644,
+		},
+	}
+	mockFS, err := dotmanfs.NewMockFileSystemWithHome(initialState, "home/test")
+	if err != nil {
+		t.Fatalf("failed to create mock filesystem: %v", err)
+	}
+	defer mockFS.CleanUp()
 
 	// Create paths relative to home directory
 	sourcePath := "home/test/.config/nvim/init.lua"
 	targetPath := "dotman/data/.config/nvim/init.lua"
-
-	// Add both source and target files
-	if err := mockFS.WriteFile(sourcePath, []byte("test content"), 0644); err != nil {
-		t.Fatalf("failed to create source file: %v", err)
-	}
-	if err := mockFS.WriteFile(targetPath, []byte("test content"), 0644); err != nil {
-		t.Fatalf("failed to create target file: %v", err)
-	}
 
 	// Initialize operation
 	op := &addOperation{

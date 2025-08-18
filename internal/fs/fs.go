@@ -1,15 +1,14 @@
 package fs
 
 import (
-	"io/fs"
 	"os"
 )
 
 // FileSystem is an interface that combines read and write filesystem operations
 type FileSystem interface {
 	// Read operations
-	fs.FS
-	fs.StatFS
+	Open(file string) (*os.File, error)
+	Stat(name string) (os.FileInfo, error)
 	ReadFile(name string) ([]byte, error)
 
 	// Write operations
@@ -25,4 +24,5 @@ type FileSystem interface {
 	// Path operations
 	Abs(path string) (string, error)
 	Rel(basepath, targpath string) (string, error)
+	Readdir(path string) ([]os.FileInfo, error)
 }

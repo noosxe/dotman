@@ -10,7 +10,11 @@ import (
 
 func TestPushOperation(t *testing.T) {
 	// Create mock filesystem with dotman structure
-	fsys, dotmanDir := testutil.NewMockFSWithDotman()
+	fsys, dotmanDir, err := testutil.NewMockFSWithDotman()
+	if err != nil {
+		t.Fatalf("failed to create mock filesystem: %v", err)
+	}
+	defer fsys.CleanUp()
 
 	// Setup test config
 	cfg := testutil.SetupTestConfig(t, fsys, dotmanDir)
@@ -21,11 +25,11 @@ func TestPushOperation(t *testing.T) {
 	// Create initial commit with sample file
 	testutil.CreateTestFileAndCommit(t, fsys, worktree, dotmanDir, "data/sample.txt", "sample content")
 
-	_ = testutil.SetupBareRepo(t, fsys, storage, "/home/remote")
+	_ = testutil.SetupBareRepo(t, fsys, "home/remote")
 
 	repo.CreateRemote(&gitconfig.RemoteConfig{
 		Name: "origin",
-		URLs: []string{"/home/remote"},
+		URLs: []string{fsys.RealPath("home/remote")},
 	})
 
 	// Setup journal manager
@@ -44,7 +48,7 @@ func TestPushOperation(t *testing.T) {
 
 	// Execute push
 	if err := op.run(); err != nil {
-		t.Fatalf("failed to execute push: %v", err)
+		t.Fatalf("failed to execute push: %v\n\n%v", err, fsys.DumpTree())
 	}
 
 	// Verify journal entry was created

@@ -3,7 +3,6 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -45,7 +44,7 @@ func LoadConfig(configPath string, fsys dotmanfs.FileSystem) (*Config, error) {
 	}
 
 	// Read and parse config file
-	data, err := fs.ReadFile(fsys, configPath)
+	data, err := fsys.ReadFile(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("error reading config file: %v", err)
 	}

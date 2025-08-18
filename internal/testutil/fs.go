@@ -8,20 +8,26 @@ import (
 
 const (
 	// TestHomeDir is the default home directory used in tests
-	TestHomeDir = "/home/test"
+	TestHomeDir = "home/test"
 )
 
 // NewMockFS creates a new mock filesystem with a home directory at /home/test
-func NewMockFS() dotmanfs.FileSystem {
-	fsys := dotmanfs.NewMockFileSystemWithHome(nil, TestHomeDir)
+func NewMockFS() (*dotmanfs.MockFileSystem, error) {
+	fsys, err := dotmanfs.NewMockFileSystemWithHome(nil, TestHomeDir)
+	if err != nil {
+		return nil, err
+	}
 	// Create home directory
 	fsys.MkdirAll(TestHomeDir, 0755)
-	return fsys
+	return fsys, nil
 }
 
 // NewMockFSWithDotman creates a new mock filesystem with a home directory and dotman directory structure
-func NewMockFSWithDotman() (dotmanfs.FileSystem, string) {
-	fsys := NewMockFS()
+func NewMockFSWithDotman() (*dotmanfs.MockFileSystem, string, error) {
+	fsys, err := NewMockFS()
+	if err != nil {
+		return nil, "", err
+	}
 
 	// Create dotman directory
 	dotmanDir := filepath.Join(TestHomeDir, ".dotman")
@@ -37,5 +43,5 @@ func NewMockFSWithDotman() (dotmanfs.FileSystem, string) {
 		fsys.MkdirAll(filepath.Join(journalDir, subdir), 0755)
 	}
 
-	return fsys, dotmanDir
+	return fsys, dotmanDir, nil
 }

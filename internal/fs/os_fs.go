@@ -15,7 +15,7 @@ func NewOSFileSystem() *OSFileSystem {
 }
 
 // Open implements fs.FS
-func (f *OSFileSystem) Open(name string) (fs.File, error) {
+func (f *OSFileSystem) Open(name string) (*os.File, error) {
 	return os.Open(name)
 }
 
@@ -67,4 +67,13 @@ func (f *OSFileSystem) Abs(path string) (string, error) {
 // Rel implements FileSystem
 func (f *OSFileSystem) Rel(basepath, targpath string) (string, error) {
 	return filepath.Rel(basepath, targpath)
+}
+
+func (f *OSFileSystem) Readdir(path string) ([]os.FileInfo, error) {
+	dir, err := f.Open(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return dir.Readdir(0)
 }

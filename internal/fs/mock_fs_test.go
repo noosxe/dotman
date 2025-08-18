@@ -6,11 +6,15 @@ import (
 )
 
 func TestMockFileSystem_BasicOperations(t *testing.T) {
-	mockFS := NewMockFileSystem(nil)
+	mockFS, err := NewMockFileSystem(nil)
+	if err != nil {
+		t.Fatalf("failed to create mock filesystem: %v", err)
+	}
+	defer mockFS.CleanUp()
 
 	// Test WriteFile and ReadFile
 	testData := []byte("test content")
-	err := mockFS.WriteFile("test.txt", testData, 0644)
+	err = mockFS.WriteFile("test.txt", testData, 0644)
 	if err != nil {
 		t.Errorf("WriteFile failed: %v", err)
 	}
@@ -40,10 +44,14 @@ func TestMockFileSystem_BasicOperations(t *testing.T) {
 }
 
 func TestMockFileSystem_DirectoryOperations(t *testing.T) {
-	mockFS := NewMockFileSystem(nil)
+	mockFS, err := NewMockFileSystem(nil)
+	if err != nil {
+		t.Fatalf("failed to create mock filesystem: %v", err)
+	}
+	defer mockFS.CleanUp()
 
 	// Test MkdirAll
-	err := mockFS.MkdirAll("dir/subdir", 0755)
+	err = mockFS.MkdirAll("dir/subdir", 0755)
 	if err != nil {
 		t.Errorf("MkdirAll failed: %v", err)
 	}
@@ -62,7 +70,11 @@ func TestMockFileSystem_DirectoryOperations(t *testing.T) {
 }
 
 func TestMockFileSystem_RemoveOperations(t *testing.T) {
-	mockFS := NewMockFileSystem(nil)
+	mockFS, err := NewMockFileSystem(nil)
+	if err != nil {
+		t.Fatalf("failed to create mock filesystem: %v", err)
+	}
+	defer mockFS.CleanUp()
 
 	// Create test files
 	mockFS.WriteFile("file1.txt", []byte("test1"), 0644)
@@ -71,7 +83,7 @@ func TestMockFileSystem_RemoveOperations(t *testing.T) {
 	mockFS.WriteFile("dir/file3.txt", []byte("test3"), 0644)
 
 	// Test Remove
-	err := mockFS.Remove("file1.txt")
+	err = mockFS.Remove("file1.txt")
 	if err != nil {
 		t.Errorf("Remove failed: %v", err)
 	}
@@ -93,14 +105,18 @@ func TestMockFileSystem_RemoveOperations(t *testing.T) {
 }
 
 func TestMockFileSystem_Symlink(t *testing.T) {
-	mockFS := NewMockFileSystem(nil)
+	mockFS, err := NewMockFileSystem(nil)
+	if err != nil {
+		t.Fatalf("failed to create mock filesystem: %v", err)
+	}
+	defer mockFS.CleanUp()
 
 	// Create source file
 	testData := []byte("test content")
 	mockFS.WriteFile("source.txt", testData, 0644)
 
 	// Test Symlink
-	err := mockFS.Symlink("source.txt", "link.txt")
+	err = mockFS.Symlink("source.txt", "link.txt")
 	if err != nil {
 		t.Errorf("Symlink failed: %v", err)
 	}
@@ -116,7 +132,11 @@ func TestMockFileSystem_Symlink(t *testing.T) {
 }
 
 func TestMockFileSystem_PathOperations(t *testing.T) {
-	mockFS := NewMockFileSystemWithHome(nil, "/home/test")
+	mockFS, err := NewMockFileSystemWithHome(nil, "/home/test")
+	if err != nil {
+		t.Fatalf("failed to create mock filesystem: %v", err)
+	}
+	defer mockFS.CleanUp()
 
 	// Test UserHomeDir
 	home, err := mockFS.UserHomeDir()
@@ -147,7 +167,12 @@ func TestMockFileSystem_PathOperations(t *testing.T) {
 }
 
 func TestMockFileSystem_FileInfo(t *testing.T) {
-	mockFS := NewMockFileSystem(nil)
+	mockFS, err := NewMockFileSystem(nil)
+	if err != nil {
+		t.Fatalf("failed to create mock filesystem: %v", err)
+	}
+	defer mockFS.CleanUp()
+
 	testData := []byte("test content")
 	mockFS.WriteFile("test.txt", testData, 0644)
 

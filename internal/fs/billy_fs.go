@@ -35,9 +35,10 @@ func (b *BillyFileSystem) Open(filename string) (billy.File, error) {
 
 // OpenFile implements billy.Filesystem
 func (b *BillyFileSystem) OpenFile(filename string, flag int, perm os.FileMode) (billy.File, error) {
+	filePath := filepath.Join(b.basePath, filename)
 	// Create parent directories if needed
 	if flag&os.O_CREATE != 0 {
-		dir := filepath.Dir(filepath.Join(b.basePath, filename))
+		dir := filepath.Dir(filePath)
 		if err := b.fs.MkdirAll(dir, 0755); err != nil {
 			return nil, err
 		}
@@ -47,7 +48,7 @@ func (b *BillyFileSystem) OpenFile(filename string, flag int, perm os.FileMode) 
 	var data []byte
 	var err error
 	if flag&os.O_CREATE == 0 {
-		data, err = b.fs.ReadFile(filepath.Join(b.basePath, filename))
+		data, err = b.fs.ReadFile(filePath)
 		if err != nil {
 			if os.IsNotExist(err) {
 				return nil, err
@@ -57,12 +58,13 @@ func (b *BillyFileSystem) OpenFile(filename string, flag int, perm os.FileMode) 
 	}
 
 	return &billyFile{
-		fs:     b.fs,
-		name:   filepath.Join(b.basePath, filename),
-		data:   data,
-		flag:   flag,
-		perm:   perm,
-		offset: 0,
+		fs:       b.fs,
+		name:     filename,
+		data:     data,
+		flag:     flag,
+		perm:     perm,
+		offset:   0,
+		basePath: b.basePath,
 	}, nil
 }
 
@@ -74,18 +76,23 @@ func (b *BillyFileSystem) Stat(filename string) (os.FileInfo, error) {
 // Rename implements billy.Filesystem
 func (b *BillyFileSystem) Rename(oldpath, newpath string) error {
 	// Read the old file
-	data, err := b.fs.ReadFile(filepath.Join(b.basePath, oldpath))
+	old := filepath.Join(b.basePath, oldpath)
+	data, err := b.fs.ReadFile(old)
 	if err != nil {
 		return err
 	}
 
 	// Write to the new file
-	if err := b.fs.WriteFile(filepath.Join(b.basePath, newpath), data, 0644); err != nil {
+	new := filepath.Join(b.basePath, newpath)
+	if err := b.fs.MkdirAll(filepath.Dir(new), 0755); err != nil {
+		return err
+	}
+	if err := b.fs.WriteFile(new, data, 0644); err != nil {
 		return err
 	}
 
 	// Remove the old file
-	return b.fs.Remove(filepath.Join(b.basePath, oldpath))
+	return b.fs.Remove(old)
 }
 
 // Remove implements billy.Filesystem
@@ -107,9 +114,7 @@ func (b *BillyFileSystem) TempFile(dir, prefix string) (billy.File, error) {
 
 // ReadDir implements billy.Filesystem
 func (b *BillyFileSystem) ReadDir(path string) ([]os.FileInfo, error) {
-	// For now, we'll just return an empty slice
-	// TODO: Implement proper directory listing
-	return []os.FileInfo{}, nil
+	return b.fs.Readdir(filepath.Join(b.basePath, path))
 }
 
 // MkdirAll implements billy.Filesystem
@@ -124,7 +129,7 @@ func (b *BillyFileSystem) Lstat(filename string) (os.FileInfo, error) {
 
 // Symlink implements billy.Filesystem
 func (b *BillyFileSystem) Symlink(target, link string) error {
-	return b.fs.Symlink(target, filepath.Join(b.basePath, link))
+	return b.fs.Symlink(filepath.Join(b.basePath, target), filepath.Join(b.basePath, link))
 }
 
 // Readlink implements billy.Filesystem
@@ -154,12 +159,13 @@ func (b *BillyFileSystem) Capabilities() billy.Capability {
 
 // billyFile implements billy.File
 type billyFile struct {
-	fs     FileSystem
-	name   string
-	data   []byte
-	flag   int
-	perm   os.FileMode
-	offset int64
+	fs       FileSystem
+	name     string
+	data     []byte
+	flag     int
+	perm     os.FileMode
+	offset   int64
+	basePath string
 }
 
 // Name implements billy.File
@@ -169,12 +175,14 @@ func (f *billyFile) Name() string {
 
 // Write implements billy.File
 func (f *billyFile) Write(p []byte) (n int, err error) {
+	filePath := filepath.Join(f.basePath, f.name)
+
 	if f.flag&os.O_WRONLY == 0 && f.flag&os.O_RDWR == 0 {
 		return 0, os.ErrPermission
 	}
 
 	// Create parent directories if needed
-	dir := filepath.Dir(f.name)
+	dir := filepath.Dir(filePath)
 	if err := f.fs.MkdirAll(dir, 0755); err != nil {
 		return 0, err
 	}
@@ -184,7 +192,7 @@ func (f *billyFile) Write(p []byte) (n int, err error) {
 	f.offset += int64(len(p))
 
 	// Write to the filesystem
-	if err := f.fs.WriteFile(f.name, f.data, f.perm); err != nil {
+	if err := f.fs.WriteFile(filePath, f.data, f.perm); err != nil {
 		return 0, err
 	}
 
@@ -256,9 +264,10 @@ func (f *billyFile) Seek(offset int64, whence int) (int64, error) {
 
 // Close implements billy.File
 func (f *billyFile) Close() error {
+	filePath := filepath.Join(f.basePath, f.name)
 	// Write any remaining data
 	if f.flag&os.O_WRONLY != 0 || f.flag&os.O_RDWR != 0 {
-		return f.fs.WriteFile(f.name, f.data, f.perm)
+		return f.fs.WriteFile(filePath, f.data, f.perm)
 	}
 	return nil
 }
@@ -277,6 +286,8 @@ func (f *billyFile) Unlock() error {
 
 // Truncate implements billy.File
 func (f *billyFile) Truncate(size int64) error {
+	filePath := filepath.Join(f.basePath, f.name)
+
 	if size < 0 {
 		return os.ErrInvalid
 	}
@@ -291,5 +302,5 @@ func (f *billyFile) Truncate(size int64) error {
 		f.data = f.data[:size]
 	}
 
-	return f.fs.WriteFile(f.name, f.data, f.perm)
+	return f.fs.WriteFile(filePath, f.data, f.perm)
 }

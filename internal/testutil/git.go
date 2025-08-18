@@ -5,23 +5,21 @@ import (
 	"testing"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/cache"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/storage"
-	"github.com/go-git/go-git/v5/storage/memory"
+	"github.com/go-git/go-git/v5/storage/filesystem"
 	"github.com/noosxe/dotman/internal/config"
 	dotmanfs "github.com/noosxe/dotman/internal/fs"
 )
 
 // SetupTestGitRepo creates a git repository in the given directory with an initial commit
-func SetupTestGitRepo(t *testing.T, fsys dotmanfs.FileSystem, dotmanDir string) (*git.Repository, *git.Worktree, storage.Storer) {
+func SetupTestGitRepo(t *testing.T, fsys *dotmanfs.MockFileSystem, dotmanDir string) (*git.Repository, *git.Worktree, storage.Storer) {
 	// Create billy filesystem adapter
 	billyFs := dotmanfs.NewBillyFileSystem(fsys, dotmanDir)
+	storage := filesystem.NewStorage(billyFs, cache.NewObjectLRUDefault())
 
-	// Create memory storage
-	memStorage := memory.NewStorage()
-
-	// Initialize git repository with memory storage
-	repo, err := git.InitWithOptions(memStorage, billyFs, git.InitOptions{
+	repo, err := git.InitWithOptions(storage, billyFs, git.InitOptions{
 		DefaultBranch: "refs/heads/main",
 	})
 	if err != nil {
@@ -34,25 +32,26 @@ func SetupTestGitRepo(t *testing.T, fsys dotmanfs.FileSystem, dotmanDir string) 
 		t.Fatalf("failed to get worktree: %v", err)
 	}
 
-	return repo, worktree, memStorage
+	return repo, worktree, storage
 }
 
 // CreateTestFileAndAdd creates a test file and adds it to git without committing
-func CreateTestFileAndAdd(t *testing.T, fsys dotmanfs.FileSystem, worktree *git.Worktree, dotmanDir, filePath, content string) {
+func CreateTestFileAndAdd(t *testing.T, fsys *dotmanfs.MockFileSystem, worktree *git.Worktree, dotmanDir, filePath, content string) {
 	// Create the file
 	fullPath := filepath.Join(dotmanDir, filePath)
+	fsys.MkdirAll(filepath.Dir(fullPath), 0755)
 	if err := fsys.WriteFile(fullPath, []byte(content), 0644); err != nil {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
 	// Add file to git
 	if _, err := worktree.Add(filePath); err != nil {
-		t.Fatalf("failed to add test file: %v", err)
+		t.Fatalf("failed to add test file: %v,\n\n%v", err, fsys.DumpTree())
 	}
 }
 
 // CreateTestFileAndCommit creates a test file, adds it to git, and commits it
-func CreateTestFileAndCommit(t *testing.T, fsys dotmanfs.FileSystem, worktree *git.Worktree, dotmanDir, filePath, content string) {
+func CreateTestFileAndCommit(t *testing.T, fsys *dotmanfs.MockFileSystem, worktree *git.Worktree, dotmanDir, filePath, content string) {
 	// Create and add the file
 	CreateTestFileAndAdd(t, fsys, worktree, dotmanDir, filePath, content)
 
@@ -96,15 +95,12 @@ func SetupTestConfig(t *testing.T, fsys dotmanfs.FileSystem, dotmanDir string) *
 	return cfg
 }
 
-func SetupBareRepo(t *testing.T, fsys dotmanfs.FileSystem, storage storage.Storer, dir string) *git.Repository {
-	// fsys.MkdirAll(dir, 0755)
-
+func SetupBareRepo(t *testing.T, fsys dotmanfs.FileSystem, dir string) *git.Repository {
 	// Create billy filesystem adapter
 	billyFs := dotmanfs.NewBillyFileSystem(fsys, dir)
+	storage := filesystem.NewStorage(billyFs, nil)
 
-	memStorage := memory.NewStorage()
-
-	repo, err := git.InitWithOptions(memStorage, billyFs, git.InitOptions{
+	repo, err := git.InitWithOptions(storage, nil, git.InitOptions{
 		DefaultBranch: "refs/heads/main",
 	})
 

@@ -9,7 +9,11 @@ import (
 
 func TestCommitOperation(t *testing.T) {
 	// Create mock filesystem with dotman structure
-	fsys, dotmanDir := testutil.NewMockFSWithDotman()
+	fsys, dotmanDir, err := testutil.NewMockFSWithDotman()
+	if err != nil {
+		t.Fatalf("failed to create mock filesystem: %v", err)
+	}
+	defer fsys.CleanUp()
 
 	// Setup test config
 	cfg := testutil.SetupTestConfig(t, fsys, dotmanDir)

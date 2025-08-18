@@ -10,7 +10,12 @@ import (
 
 func TestJournalManager(t *testing.T) {
 	// Create a mock filesystem
-	mockFS := fs.NewMockFileSystem(nil)
+	mockFS, err := fs.NewMockFileSystem(nil)
+	if err != nil {
+		t.Fatalf("failed to create mock filesystem: %v", err)
+	}
+	defer mockFS.CleanUp()
+
 	journalDir := "test/journal"
 
 	// Create journal manager

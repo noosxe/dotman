@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"path/filepath"
 	"time"
 
@@ -378,7 +377,7 @@ func (jm *JournalManager) ListEntries(state EntryState) ([]*JournalEntry, error)
 		}
 
 		// Read all entries
-		dirEntries, err := dirFile.(fs.ReadDirFile).ReadDir(-1)
+		dirEntries, err := dirFile.ReadDir(-1)
 		dirFile.Close() // Close immediately after reading
 		if err != nil {
 			return nil, fmt.Errorf("error reading directory %s: %v", dir, err)

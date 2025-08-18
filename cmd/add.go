@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/go-git/go-git/v5"
@@ -437,7 +438,7 @@ func copyDir(src, dst string, fsys dotmanfs.FileSystem) error {
 	}
 	defer dir.Close()
 
-	entries, err := dir.(fs.ReadDirFile).ReadDir(-1)
+	entries, err := dir.ReadDir(-1)
 	if err != nil {
 		return err
 	}
@@ -474,12 +475,12 @@ func verifyDirCopy(src, dst string, fsys dotmanfs.FileSystem) error {
 	}
 	defer dstDir.Close()
 
-	srcEntries, err := srcDir.(fs.ReadDirFile).ReadDir(-1)
+	srcEntries, err := srcDir.ReadDir(-1)
 	if err != nil {
 		return fmt.Errorf("error reading source directory entries: %v", err)
 	}
 
-	dstEntries, err := dstDir.(fs.ReadDirFile).ReadDir(-1)
+	dstEntries, err := dstDir.ReadDir(-1)
 	if err != nil {
 		return fmt.Errorf("error reading destination directory entries: %v", err)
 	}
@@ -488,11 +489,15 @@ func verifyDirCopy(src, dst string, fsys dotmanfs.FileSystem) error {
 		return fmt.Errorf("directory contents differ: source has %d entries, destination has %d entries", len(srcEntries), len(dstEntries))
 	}
 
-	for i, srcEntry := range srcEntries {
-		dstEntry := dstEntries[i]
-		if srcEntry.Name() != dstEntry.Name() {
-			return fmt.Errorf("directory entries differ: source has %s, destination has %s", srcEntry.Name(), dstEntry.Name())
+	for _, srcEntry := range srcEntries {
+		dstIndex := slices.IndexFunc(dstEntries, func(elem fs.DirEntry) bool {
+			return elem.Name() == srcEntry.Name()
+		})
+		if dstIndex == -1 {
+			return fmt.Errorf("directory entries differ: source has %s, destination does not", srcEntry.Name())
 		}
+
+		dstEntry := dstEntries[dstIndex]
 
 		srcPath := filepath.Join(src, srcEntry.Name())
 		dstPath := filepath.Join(dst, dstEntry.Name())
