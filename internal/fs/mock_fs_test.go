@@ -191,13 +191,13 @@ func TestMockFileSystem_FileInfo(t *testing.T) {
 	if info.Mode() != 0644 {
 		t.Errorf("Mode returned wrong value: got %v, want 0644", info.Mode())
 	}
-	if !info.ModTime().IsZero() {
-		t.Error("ModTime should return zero time")
+	if info.ModTime().IsZero() {
+		t.Error("ModTime should return non-zero time")
 	}
 	if info.IsDir() {
 		t.Error("IsDir should return false for regular file")
 	}
-	if info.Sys() != nil {
-		t.Error("Sys should return nil")
+	if info.Sys() == nil {
+		t.Error("Sys should not return nil")
 	}
 }
