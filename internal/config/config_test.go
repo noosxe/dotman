@@ -43,6 +43,7 @@ func TestLoadConfig_ExistingConfig(t *testing.T) {
 	mockFS, err := fs.NewMockFileSystem(map[string]*fstest.MapFile{
 		"config.json": {
 			Data: data,
+			Mode: 0644,
 		},
 	})
 	if err != nil {
